@@ -65,7 +65,8 @@ order or membership is changed.
 ## Plugin List
 
 - Click a plugin header to expand or collapse its embedded panel.
-- Drag the `::` handle to reorder plugin headers. Drawer persists the order.
+- Click `...` to set the expanded panel height or remove the plugin from Drawer.
+- Hold `...`, then drag the preview onto a plugin header to reorder the list.
 - Click `+` to see every installed Omarchy plugin not already in the list, then
   add one immediately. Disabled plugins are identified in that catalog; their
   native fallback requires enabling them in Omarchy first.

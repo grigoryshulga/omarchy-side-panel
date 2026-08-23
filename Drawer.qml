@@ -16,7 +16,11 @@ Item {
   property bool opened: false
   property bool catalogOpen: false
   property string expandedId: ""
+  property string menuId: ""
   property string draggedId: ""
+  property real dragX: 0
+  property real dragY: 0
+  property real dragWidth: 0
   property var activePanel: null
   property var pluginItems: []
   property var adaptedUrls: ({})
@@ -59,7 +63,8 @@ Item {
       normalized.push({
         id: id,
         label: String(item.label || ""),
-        icon: String(item.icon || "")
+        icon: String(item.icon || ""),
+        height: Number(item.height) || 0
       })
     }
     return normalized
@@ -86,7 +91,12 @@ Item {
   function copyItems(items) {
     var copy = []
     for (var i = 0; i < items.length; i++) {
-      copy.push({ id: items[i].id, label: items[i].label, icon: items[i].icon })
+      copy.push({
+        id: items[i].id,
+        label: items[i].label,
+        icon: items[i].icon,
+        height: items[i].height
+      })
     }
     return copy
   }
@@ -115,6 +125,7 @@ Item {
   }
 
   function setExpanded(id) {
+    menuId = ""
     if (expandedId === id) {
       deactivateActivePanel()
       expandedId = ""
@@ -122,6 +133,56 @@ Item {
     }
     deactivateActivePanel()
     expandedId = id
+  }
+
+  function panelHeight(item) {
+    var height = Number(item ? item.height : 0)
+    if (!height) height = Style.space(280)
+    return Math.round(Math.max(Style.space(160), Math.min(Style.space(520), height)))
+  }
+
+  function setPanelHeight(id, height) {
+    var index = itemIndex(id)
+    if (index < 0) return
+    var next = copyItems(pluginItems)
+    next[index].height = height
+    persistItems(next)
+    menuId = ""
+  }
+
+  function removePlugin(id) {
+    var index = itemIndex(id)
+    if (index < 0) return
+    if (expandedId === id) {
+      deactivateActivePanel()
+      expandedId = ""
+    }
+    var next = copyItems(pluginItems)
+    next.splice(index, 1)
+    persistItems(next)
+    menuId = ""
+  }
+
+  function beginDrag(row, x, y) {
+    menuId = ""
+    draggedId = row.pluginId
+    var point = row.mapToItem(keyCatcher, x, y)
+    dragX = point.x
+    dragY = point.y
+    dragWidth = row.width
+  }
+
+  function updateDrag(row, x, y) {
+    if (draggedId !== row.pluginId) return
+    var point = row.mapToItem(keyCatcher, x, y)
+    dragX = point.x
+    dragY = point.y
+  }
+
+  function finishDrag() {
+    if (draggedId === "") return
+    dragPreview.Drag.drop()
+    draggedId = ""
   }
 
   function moveItem(sourceId, targetId, after) {
@@ -272,6 +333,7 @@ Item {
   function close() {
     deactivateActivePanel()
     catalogOpen = false
+    menuId = ""
     opened = false
   }
   function toggle() { opened ? close() : open() }
@@ -406,7 +468,7 @@ Item {
               readonly property var plugin: modelData
               width: pluginList.width
               height: header.height + (expanded ? content.height : 0)
-              z: dragArea.drag.active ? 2 : 1
+              z: root.menuId === pluginId ? 4 : (root.draggedId === pluginId ? 3 : 1)
 
               DropArea {
                 anchors.fill: parent
@@ -443,7 +505,7 @@ Item {
                 Text {
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(42)
-                  anchors.right: dragHandle.left
+                  anchors.right: expansionIndicator.left
                   anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   text: root.pluginLabel(pluginRow.plugin)
@@ -455,7 +517,8 @@ Item {
                 }
 
                 Text {
-                  anchors.right: dragHandle.left
+                  id: expansionIndicator
+                  anchors.right: overflowButton.left
                   anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
                   text: pluginRow.expanded ? "-" : "+"
@@ -468,7 +531,7 @@ Item {
                 MouseArea {
                   id: headerHover
                   anchors.left: parent.left
-                  anchors.right: dragHandle.left
+                  anchors.right: expansionIndicator.left
                   anchors.top: parent.top
                   anchors.bottom: parent.bottom
                   hoverEnabled: true
@@ -477,7 +540,7 @@ Item {
                 }
 
                 Item {
-                  id: dragHandle
+                  id: overflowButton
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
@@ -486,7 +549,7 @@ Item {
 
                   Text {
                     anchors.centerIn: parent
-                    text: "::"
+                    text: "..."
                     color: root.foreground
                     opacity: 0.5
                     font.family: Style.font.family
@@ -494,33 +557,41 @@ Item {
                   }
 
                   MouseArea {
-                    id: dragArea
+                    id: overflowMouse
                     anchors.fill: parent
-                    cursorShape: Qt.DragMoveCursor
-                    drag.target: pluginRow
-                    onPressed: root.draggedId = pluginRow.pluginId
+                    property bool dragged: false
+                    pressAndHoldInterval: 300
+                    hoverEnabled: true
+                    cursorShape: dragged ? Qt.DragMoveCursor : Qt.PointingHandCursor
+                    onPressed: dragged = false
+                    onPressAndHold: function(mouse) {
+                      dragged = true
+                      root.beginDrag(pluginRow, overflowButton.x + mouse.x, overflowButton.y + mouse.y)
+                    }
+                    onPositionChanged: function(mouse) {
+                      if (dragged)
+                        root.updateDrag(pluginRow, overflowButton.x + mouse.x, overflowButton.y + mouse.y)
+                    }
                     onReleased: {
-                      pluginRow.Drag.drop()
-                      pluginRow.x = 0
-                      pluginRow.y = 0
-                      root.draggedId = ""
+                      if (!dragged) return
+                      root.finishDrag()
+                      Qt.callLater(function() { overflowMouse.dragged = false })
+                    }
+                    onClicked: {
+                      if (dragged) return
+                      root.menuId = root.menuId === pluginRow.pluginId ? "" : pluginRow.pluginId
                     }
                   }
 
                 }
               }
 
-              Drag.active: dragArea.drag.active
-              Drag.keys: ["omarchy-drawer-plugin"]
-              Drag.hotSpot.x: width / 2
-              Drag.hotSpot.y: height / 2
-
               Item {
                 id: content
                 anchors.top: header.bottom
                 width: parent.width
                 height: pluginRow.expanded
-                  ? Math.max(Style.space(150), Math.min(Style.space(420), surface.height - Style.space(110)))
+                  ? root.panelHeight(pluginRow.plugin)
                   : 0
                 clip: true
 
@@ -593,6 +664,107 @@ Item {
                   }
                 }
               }
+
+              Rectangle {
+                id: overflowMenu
+                visible: root.menuId === pluginRow.pluginId
+                x: pluginRow.width - width
+                y: header.height + Style.space(4)
+                width: Math.round(Style.space(190))
+                height: menuContent.implicitHeight + Style.space(12)
+                radius: Style.cornerRadius / 2
+                color: Color.popups.background
+                border.width: 1
+                border.color: Color.popups.border
+                z: 5
+
+                Column {
+                  id: menuContent
+                  anchors.fill: parent
+                  anchors.margins: Style.space(6)
+                  spacing: Style.space(3)
+
+                  Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(8)
+                    width: parent.width - Style.space(8)
+                    text: "PANEL HEIGHT"
+                    color: root.foreground
+                    opacity: 0.55
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                  }
+
+                  Repeater {
+                    model: [
+                      { label: "Compact", height: Style.space(200) },
+                      { label: "Standard", height: Style.space(280) },
+                      { label: "Tall", height: Style.space(420) }
+                    ]
+
+                    delegate: Rectangle {
+                      required property var modelData
+                      width: parent.width
+                      height: Math.round(Style.space(30))
+                      radius: Style.cornerRadius / 3
+                      color: sizeHover.containsMouse
+                        ? Style.hoverFillFor(root.foreground, Color.accent)
+                        : "transparent"
+
+                      Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Style.space(8)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: String(modelData.label)
+                        color: root.foreground
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.bodySmall
+                      }
+
+                      MouseArea {
+                        id: sizeHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setPanelHeight(pluginRow.pluginId, modelData.height)
+                      }
+                    }
+                  }
+
+                  Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+                  }
+
+                  Rectangle {
+                    width: parent.width
+                    height: Math.round(Style.space(30))
+                    radius: Style.cornerRadius / 3
+                    color: removeHover.containsMouse
+                      ? Qt.rgba(0.8, 0.2, 0.2, 0.18) : "transparent"
+
+                    Text {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: "Remove plugin"
+                      color: root.foreground
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.bodySmall
+                    }
+
+                    MouseArea {
+                      id: removeHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: root.removePlugin(pluginRow.pluginId)
+                    }
+                  }
+                }
+              }
             }
 
             footer: Item {
@@ -638,6 +810,39 @@ Item {
               onClicked: root.catalogOpen = true
             }
           }
+        }
+
+        Rectangle {
+          id: dragPreview
+          visible: root.draggedId !== ""
+          x: root.dragX - width / 2
+          y: root.dragY - height / 2
+          width: root.dragWidth
+          height: Math.round(Style.space(42))
+          radius: Style.cornerRadius / 2
+          color: Style.selectedFillFor(root.foreground, Color.accent)
+          border.width: 1
+          border.color: Color.popups.border
+          opacity: 0.92
+          z: 8
+
+          Text {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(12)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(12)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.pluginLabel(root.itemFor(root.draggedId))
+            color: root.foreground
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            elide: Text.ElideRight
+          }
+
+          Drag.active: root.draggedId !== ""
+          Drag.keys: ["omarchy-drawer-plugin"]
+          Drag.hotSpot.x: width / 2
+          Drag.hotSpot.y: height / 2
         }
       }
     }
