@@ -19,9 +19,12 @@ Item {
   property bool editing: false
   property bool catalogOpen: false
   property string expandedId: ""
-  property string menuId: ""
   property string draggedId: ""
   property real dragWidth: 0
+  property string resizingId: ""
+  property real resizeStartHeight: 0
+  property real resizeStartY: 0
+  property real resizePreviewHeight: 0
   property string dropTargetId: ""
   property bool dropAfter: false
   property real dropLineY: 0
@@ -130,7 +133,6 @@ Item {
   }
 
   function setExpanded(id) {
-    menuId = ""
     if (expandedId === id) {
       deactivateActivePanels()
       expandedId = ""
@@ -144,24 +146,39 @@ Item {
     if (editing === value) return
     deactivateActivePanels()
     editing = value
+    resizingId = ""
     expandedId = ""
-    menuId = ""
     catalogOpen = false
   }
 
   function panelHeight(item) {
+    if (item && resizingId === item.id) return resizePreviewHeight
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
     return Math.round(Math.max(Style.space(160), Math.min(Style.space(520), height)))
   }
 
-  function setPanelHeight(id, height) {
-    var index = itemIndex(id)
-    if (index < 0) return
-    var next = copyItems(pluginItems)
-    next[index].height = height
-    persistItems(next)
-    menuId = ""
+  function beginResize(item, y) {
+    resizeStartHeight = panelHeight(item)
+    resizingId = item.id
+    resizeStartY = y
+    resizePreviewHeight = resizeStartHeight
+  }
+
+  function updateResize(y) {
+    if (resizingId === "") return
+    var height = resizeStartHeight + y - resizeStartY
+    resizePreviewHeight = Math.round(Math.max(Style.space(160), Math.min(Style.space(520), height)) / 5) * 5
+  }
+
+  function finishResize() {
+    var index = itemIndex(resizingId)
+    if (index >= 0) {
+      var next = copyItems(pluginItems)
+      next[index].height = resizePreviewHeight
+      persistItems(next)
+    }
+    resizingId = ""
   }
 
   function removePlugin(id) {
@@ -174,11 +191,9 @@ Item {
     var next = copyItems(pluginItems)
     next.splice(index, 1)
     persistItems(next)
-    menuId = ""
   }
 
   function beginDrag(row, x, y) {
-    menuId = ""
     draggedId = row.pluginId
     var point = row.mapToItem(keyCatcher, x, y)
     dragWidth = row.width
@@ -373,9 +388,9 @@ Item {
     opened = false
     deactivateActivePanels()
     catalogOpen = false
-    menuId = ""
     editing = false
     expandedId = ""
+    resizingId = ""
   }
   function toggle() { opened ? close() : open() }
 
@@ -582,7 +597,7 @@ Item {
               readonly property var plugin: modelData
               width: pluginList.width
               height: (root.editing ? header.height : 0) + content.height
-              z: root.menuId === pluginId ? 4 : (root.draggedId === pluginId ? 3 : 1)
+              z: root.draggedId === pluginId ? 3 : 1
 
               Rectangle {
                 id: header
@@ -647,7 +662,7 @@ Item {
 
                 Item {
                   id: reorderButton
-                  anchors.right: overflowButton.left
+                  anchors.right: deleteButton.left
                   anchors.rightMargin: Style.space(2)
                   anchors.verticalCenter: parent.verticalCenter
                   width: Math.round(Style.space(30))
@@ -676,7 +691,7 @@ Item {
                 }
 
                 Item {
-                  id: overflowButton
+                  id: deleteButton
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
@@ -685,7 +700,7 @@ Item {
 
                   Text {
                     anchors.centerIn: parent
-                    text: "..."
+                    text: "\uf1f8"
                     color: root.foreground
                     opacity: 0.5
                     font.family: Style.font.family
@@ -693,11 +708,11 @@ Item {
                   }
 
                   MouseArea {
-                    id: overflowMouse
+                    id: deleteMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.menuId = root.menuId === pluginRow.pluginId ? "" : pluginRow.pluginId
+                    onClicked: root.removePlugin(pluginRow.pluginId)
                   }
 
                 }
@@ -780,105 +795,32 @@ Item {
                     }
                   }
                 }
-              }
 
-              Rectangle {
-                id: overflowMenu
-                visible: root.menuId === pluginRow.pluginId
-                x: pluginRow.width - width
-                y: header.height + Style.space(4)
-                width: Math.round(Style.space(190))
-                height: menuContent.implicitHeight + Style.space(12)
-                radius: Style.cornerRadius / 2
-                color: Color.popups.background
-                border.width: 1
-                border.color: Color.popups.border
-                z: 5
+                Rectangle {
+                  id: resizeHandle
+                  visible: root.editing && pluginRow.expanded
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.bottom: parent.bottom
+                  height: Math.round(Style.space(8))
+                  color: resizeMouse.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : "transparent"
 
-                Column {
-                  id: menuContent
-                  anchors.fill: parent
-                  anchors.margins: Style.space(6)
-                  spacing: Style.space(3)
-
-                  Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(8)
-                    width: parent.width - Style.space(8)
-                    text: "PANEL HEIGHT"
-                    color: root.foreground
-                    opacity: 0.55
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                  }
-
-                  Repeater {
-                    model: [
-                      { label: "Compact", height: Style.space(200) },
-                      { label: "Standard", height: Style.space(280) },
-                      { label: "Tall", height: Style.space(420) }
-                    ]
-
-                    delegate: Rectangle {
-                      required property var modelData
-                      width: parent.width
-                      height: Math.round(Style.space(30))
-                      radius: Style.cornerRadius / 3
-                      color: sizeHover.containsMouse
-                        ? Style.hoverFillFor(root.foreground, Color.accent)
-                        : "transparent"
-
-                      Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: Style.space(8)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: String(modelData.label)
-                        color: root.foreground
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.bodySmall
-                      }
-
-                      MouseArea {
-                        id: sizeHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.setPanelHeight(pluginRow.pluginId, modelData.height)
-                      }
+                  MouseArea {
+                    id: resizeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.SizeVerCursor
+                    onPressed: function(mouse) {
+                      var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.beginResize(pluginRow.plugin, point.y)
                     }
-                  }
-
-                  Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-                  }
-
-                  Rectangle {
-                    width: parent.width
-                    height: Math.round(Style.space(30))
-                    radius: Style.cornerRadius / 3
-                    color: removeHover.containsMouse
-                      ? Qt.rgba(0.8, 0.2, 0.2, 0.18) : "transparent"
-
-                    Text {
-                      anchors.left: parent.left
-                      anchors.leftMargin: Style.space(8)
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: "Remove plugin"
-                      color: root.foreground
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.bodySmall
+                    onPositionChanged: function(mouse) {
+                      var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.updateResize(point.y)
                     }
-
-                    MouseArea {
-                      id: removeHover
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: root.removePlugin(pluginRow.pluginId)
-                    }
+                    onReleased: root.finishResize()
                   }
                 }
               }

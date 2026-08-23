@@ -75,8 +75,8 @@ order or membership is changed.
   return to the panel-only view.
 - Click `PIN` to keep Drawer open when another bar popout is activated. Click
   `UNPIN` or the Drawer bar icon to close it.
-- In edit mode, click `...` to set a panel height or remove the plugin from
-  Drawer. Drag the up/down handle onto a plugin header to reorder it.
+- In edit mode, drag a panel's lower edge to resize it in 5px steps. Use the
+  trash button to remove a plugin and the up/down handle to reorder it.
   A highlighted line previews the insertion position.
 - In edit mode, click `+` to see every installed Omarchy plugin not already in
   the list, then add one immediately. Disabled plugins are identified in that
