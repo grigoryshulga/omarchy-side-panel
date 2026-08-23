@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "gshulga.drawer",
+  "name": "Drawer",
+  "version": "0.1.0",
+  "author": "gshulga",
+  "description": "A configurable edge drawer that hosts plugin pages and launches standard Omarchy panels.",
+  "license": "MIT",
+  "kinds": ["bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Drawer",
+    "description": "An edge drawer for secondary plugins",
+    "category": "System",
+    "defaultSection": "left",
+    "allowMultiple": false,
+    "defaults": {
+      "edge": "left"
+    },
+    "schema": [
+      {
+        "key": "edge",
+        "type": "enum",
+        "label": "Drawer edge",
+        "description": "The screen edge from which the drawer opens.",
+        "options": ["left", "right", "top", "bottom"],
+        "defaultValue": "left"
+      }
+    ]
+  }
+}
