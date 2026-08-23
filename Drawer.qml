@@ -581,6 +581,7 @@ Item {
             anchors.bottomMargin: root.editing ? Style.space(10) : 0
             width: parent.width
             clip: true
+            interactive: root.resizingId === "" && root.draggedId === ""
             spacing: Style.space(7)
             model: root.pluginItems
 
@@ -811,6 +812,7 @@ Item {
                     id: resizeMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    preventStealing: true
                     cursorShape: Qt.SizeVerCursor
                     onPressed: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
