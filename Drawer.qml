@@ -16,6 +16,7 @@ Item {
   property var popoutOwner: null
   property bool opened: false
   property bool pinned: false
+  property bool editing: false
   property bool catalogOpen: false
   property string expandedId: ""
   property string menuId: ""
@@ -23,7 +24,7 @@ Item {
   property real dragX: 0
   property real dragY: 0
   property real dragWidth: 0
-  property var activePanel: null
+  property var activePanels: []
   property var pluginItems: []
   property var adaptedUrls: ({})
   property string adaptingId: ""
@@ -130,12 +131,21 @@ Item {
   function setExpanded(id) {
     menuId = ""
     if (expandedId === id) {
-      deactivateActivePanel()
+      deactivateActivePanels()
       expandedId = ""
       return
     }
-    deactivateActivePanel()
+    deactivateActivePanels()
     expandedId = id
+  }
+
+  function setEditing(value) {
+    if (editing === value) return
+    deactivateActivePanels()
+    editing = value
+    expandedId = ""
+    menuId = ""
+    catalogOpen = false
   }
 
   function panelHeight(item) {
@@ -157,7 +167,7 @@ Item {
     var index = itemIndex(id)
     if (index < 0) return
     if (expandedId === id) {
-      deactivateActivePanel()
+      deactivateActivePanels()
       expandedId = ""
     }
     var next = copyItems(pluginItems)
@@ -322,21 +332,27 @@ Item {
     if ("pluginId" in page) page.pluginId = item ? String(item.id) : ""
     if ("service" in page && root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
       page.service = root.bar.shell.serviceFor(root.resolvedPluginId(item))
-    activePanel = page
+    var nextPanels = activePanels.slice()
+    if (nextPanels.indexOf(page) < 0) nextPanels.push(page)
+    activePanels = nextPanels
     if (typeof page.open === "function" && opened) page.open()
   }
 
-  function deactivateActivePanel() {
-    if (activePanel && typeof activePanel.drawerDeactivate === "function")
-      activePanel.drawerDeactivate()
-    activePanel = null
+  function deactivateActivePanels() {
+    for (var i = 0; i < activePanels.length; i++) {
+      var panel = activePanels[i]
+      if (panel && typeof panel.drawerDeactivate === "function") panel.drawerDeactivate()
+    }
+    activePanels = []
   }
 
   function open() { opened = true }
   function close() {
-    deactivateActivePanel()
+    deactivateActivePanels()
     catalogOpen = false
     menuId = ""
+    editing = false
+    expandedId = ""
     opened = false
   }
   function toggle() { opened ? close() : open() }
@@ -436,7 +452,7 @@ Item {
             Text {
               id: title
               anchors.left: parent.left
-              anchors.right: pinButton.left
+              anchors.right: editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: "PLUGINS"
@@ -446,6 +462,39 @@ Item {
               font.bold: true
               font.letterSpacing: 1.1
               elide: Text.ElideRight
+            }
+
+            Rectangle {
+              id: editButton
+              anchors.right: pinButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              width: editText.implicitWidth + Style.space(16)
+              height: Math.round(Style.space(28))
+              radius: height / 2
+              color: root.editing
+                ? Style.selectedFillFor(root.foreground, Color.accent)
+                : (editHover.containsMouse
+                  ? Style.hoverFillFor(root.foreground, Color.accent)
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06))
+
+              Text {
+                id: editText
+                anchors.centerIn: parent
+                text: root.editing ? "DONE" : "EDIT"
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              MouseArea {
+                id: editHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.setEditing(!root.editing)
+              }
             }
 
             Rectangle {
@@ -486,8 +535,8 @@ Item {
             id: pluginList
             anchors.top: titleRow.bottom
             anchors.topMargin: Style.space(10)
-            anchors.bottom: addButton.top
-            anchors.bottomMargin: Style.space(10)
+            anchors.bottom: root.editing ? addButton.top : parent.bottom
+            anchors.bottomMargin: root.editing ? Style.space(10) : 0
             width: parent.width
             clip: true
             spacing: Style.space(7)
@@ -502,14 +551,15 @@ Item {
               required property int index
               required property var modelData
               readonly property string pluginId: String(modelData.id)
-              readonly property bool expanded: root.expandedId === pluginId
+              readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
               width: pluginList.width
-              height: header.height + (expanded ? content.height : 0)
+              height: (root.editing ? header.height : 0) + content.height
               z: root.menuId === pluginId ? 4 : (root.draggedId === pluginId ? 3 : 1)
 
               DropArea {
                 anchors.fill: parent
+                enabled: root.editing
                 keys: ["omarchy-drawer-plugin"]
                 onDropped: function(drop) {
                   root.moveItem(root.draggedId, pluginRow.pluginId, drop.position.y > pluginRow.height / 2)
@@ -519,6 +569,7 @@ Item {
 
               Rectangle {
                 id: header
+                visible: root.editing
                 width: parent.width
                 height: Math.round(Style.space(42))
                 radius: Style.cornerRadius / 2
@@ -626,7 +677,7 @@ Item {
 
               Item {
                 id: content
-                anchors.top: header.bottom
+                anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
                   ? root.panelHeight(pluginRow.plugin)
@@ -807,7 +858,7 @@ Item {
 
             footer: Item {
               width: pluginList.width
-              height: Math.round(Style.space(24))
+              height: root.editing ? Math.round(Style.space(24)) : 0
 
               DropArea {
                 anchors.fill: parent
@@ -823,6 +874,7 @@ Item {
 
           Rectangle {
             id: addButton
+            visible: root.editing
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(parent.width, Style.space(210))
@@ -852,7 +904,7 @@ Item {
 
         Rectangle {
           id: dragPreview
-          visible: root.draggedId !== ""
+          visible: root.editing && root.draggedId !== ""
           x: root.dragX - width / 2
           y: root.dragY - height / 2
           width: root.dragWidth

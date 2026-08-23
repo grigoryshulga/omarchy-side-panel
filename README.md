@@ -70,14 +70,16 @@ order or membership is changed.
 
 ## Plugin List
 
-- Click a plugin header to expand or collapse its embedded panel.
+- Drawer normally shows plugin panels only, without per-plugin headers.
+- Click `EDIT` to show plugin headers and editing controls. Click `DONE` to
+  return to the panel-only view.
 - Click `PIN` to keep Drawer open when another bar popout is activated. Click
   `UNPIN` or the Drawer bar icon to close it.
-- Click `...` to set the expanded panel height or remove the plugin from Drawer.
-- Hold `...`, then drag the preview onto a plugin header to reorder the list.
-- Click `+` to see every installed Omarchy plugin not already in the list, then
-  add one immediately. Disabled plugins are identified in that catalog; their
-  native fallback requires enabling them in Omarchy first.
+- In edit mode, click `...` to set a panel height or remove the plugin from
+  Drawer. Hold `...`, then drag the preview onto a plugin header to reorder it.
+- In edit mode, click `+` to see every installed Omarchy plugin not already in
+  the list, then add one immediately. Disabled plugins are identified in that
+  catalog; their native fallback requires enabling them in Omarchy first.
 
 ## Embedded Page Contract
 
