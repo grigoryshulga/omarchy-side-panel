@@ -29,19 +29,38 @@ function normalize(items, resolveId) {
   return normalized
 }
 
-function itemsFromSettings(settings, defaults, resolveId) {
-  var configured = settings ? settings.plugins : undefined
-  if (Array.isArray(configured)) return normalize(configured, resolveId)
+function pageTitle(value, index) {
+  var title = String(value || "").trim()
+  return title === "" ? "Page " + (index + 1) : title
+}
 
-  var pages = settings ? settings.pages : undefined
-  if (Array.isArray(pages) && pages.length > 0) {
-    var flattened = []
-    for (var i = 0; i < pages.length; i++) {
-      if (pages[i] && Array.isArray(pages[i].items)) flattened = flattened.concat(pages[i].items)
+function normalizePages(pages, defaults, resolveId) {
+  var source = Array.isArray(pages) && pages.length > 0 ? pages : [{ title: "Plugins", items: defaults }]
+  var normalized = []
+  var usedPlugins = ({})
+  for (var i = 0; i < source.length; i++) {
+    var page = source[i] || ({})
+    var items = normalize(page.items, resolveId)
+    var uniqueItems = []
+    for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      if (usedPlugins[items[itemIndex].id]) continue
+      usedPlugins[items[itemIndex].id] = true
+      uniqueItems.push(items[itemIndex])
     }
-    return normalize(flattened, resolveId)
+    normalized.push({
+      title: pageTitle(page.title || page.label || page.name, i),
+      items: uniqueItems
+    })
   }
-  return normalize(defaults, resolveId)
+  return normalized
+}
+
+function pagesFromSettings(settings, defaults, resolveId) {
+  if (settings && Array.isArray(settings.pages) && settings.pages.length > 0)
+    return normalizePages(settings.pages, defaults, resolveId)
+  if (settings && Array.isArray(settings.plugins))
+    return normalizePages([{ title: "Plugins", items: settings.plugins }], defaults, resolveId)
+  return normalizePages([], defaults, resolveId)
 }
 
 function copy(items) {
@@ -88,11 +107,19 @@ function move(items, sourceId, targetId, after) {
   return result
 }
 
-function persistedEntry(settings, items) {
+function copyPages(pages) {
+  var result = []
+  for (var i = 0; i < pages.length; i++) {
+    result.push({ title: pageTitle(pages[i].title, i), items: copy(pages[i].items || []) })
+  }
+  return result
+}
+
+function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.drawer" })
   for (var key in settings || ({})) {
     if (key !== "id" && key !== "pages" && key !== "plugins") entry[key] = settings[key]
   }
-  entry.plugins = copy(items)
+  entry.pages = copyPages(pages)
   return entry
 }

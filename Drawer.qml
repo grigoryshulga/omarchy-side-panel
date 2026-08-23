@@ -22,6 +22,7 @@ Item {
   property bool pinned: false
   property bool editing: false
   property bool catalogOpen: false
+  property bool settingsOpen: false
   property string expandedId: ""
   property string draggedId: ""
   property real dragWidth: 0
@@ -33,17 +34,30 @@ Item {
   property bool dropAfter: false
   property real dropLineY: 0
   property var activePanels: []
-  property var pluginItems: []
+  property var drawerPages: []
+  property int currentPage: 0
+  readonly property var pluginItems: drawerPages.length > 0 && drawerPages[currentPage]
+    ? drawerPages[currentPage].items : []
   property var adaptedUrls: ({})
   property string adaptingId: ""
   property var adaptationErrors: ({})
   property var panelErrors: ({})
   property int panelEpoch: 0
+  property bool resizingDrawer: false
+  property real drawerResizeStart: 0
+  property real drawerResizeStartExtent: 0
+  property real drawerResizePreview: 0
+  property int keyboardPluginIndex: -1
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
   readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
+  readonly property bool transparentBackground: setting("transparentBackground", false) === true
+  readonly property string barPosition: bar ? String(bar.position || "top") : "top"
+  readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
+  readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? drawerWidth : drawerHeight))
+  readonly property real drawerExtent: resizingDrawer ? drawerResizePreview : configuredExtent
   readonly property color foreground: Color.popups.text
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
@@ -68,8 +82,8 @@ Item {
     return DrawerModel.normalize(items, function(item) { return root.resolvedPluginId(item) })
   }
 
-  function itemsFromSettings() {
-    return DrawerModel.itemsFromSettings(settings, defaultPluginItems(), function(item) {
+  function pagesFromSettings() {
+    return DrawerModel.pagesFromSettings(settings, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
   }
@@ -78,13 +92,106 @@ Item {
     return DrawerModel.copy(items)
   }
 
-  function persistItems(items) {
-    var nextItems = normalizeItems(items)
+  function copyPages(pages) {
+    return DrawerModel.copyPages(pages)
+  }
+
+  function currentPageRecord() {
+    return drawerPages.length > 0 ? drawerPages[currentPage] : null
+  }
+
+  function persistPages(pages, nextPage) {
+    var nextPages = DrawerModel.normalizePages(pages, defaultPluginItems(), function(item) {
+      return root.resolvedPluginId(item)
+    })
     deactivateActivePanels()
-    pluginItems = nextItems
-    var entry = DrawerModel.persistedEntry(settings, nextItems)
+    drawerPages = nextPages
+    currentPage = Math.max(0, Math.min(nextPages.length - 1, nextPage === undefined ? currentPage : nextPage))
+    var entry = DrawerModel.persistedEntry(settings, nextPages)
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
       bar.shell.updateEntryInline("gshulga.drawer", entry)
+  }
+
+  function persistItems(items) {
+    var nextItems = normalizeItems(items)
+    var nextPages = copyPages(drawerPages)
+    if (nextPages.length === 0) nextPages.push({ title: "Plugins", items: [] })
+    nextPages[currentPage].items = nextItems
+    persistPages(nextPages, currentPage)
+  }
+
+  function selectPage(index) {
+    if (index < 0 || index >= drawerPages.length || index === currentPage) return
+    deactivateActivePanels("page-change")
+    currentPage = index
+    expandedId = ""
+    panelEpoch += 1
+    if (opened) adaptPreferredPanels()
+  }
+
+  function addPage() {
+    var nextPages = copyPages(drawerPages)
+    nextPages.push({ title: "Page " + (nextPages.length + 1), items: [] })
+    persistPages(nextPages, nextPages.length - 1)
+  }
+
+  function renameCurrentPage(title) {
+    var nextPages = copyPages(drawerPages)
+    if (nextPages.length === 0) return
+    nextPages[currentPage].title = String(title || "").trim() || "Page " + (currentPage + 1)
+    persistPages(nextPages, currentPage)
+  }
+
+  function removeCurrentPage() {
+    if (drawerPages.length <= 1) return
+    var nextPages = copyPages(drawerPages)
+    nextPages.splice(currentPage, 1)
+    persistPages(nextPages, Math.min(currentPage, nextPages.length - 1))
+  }
+
+  function moveKeyboardPlugin(delta) {
+    if (pluginItems.length === 0) return
+    keyboardPluginIndex = (keyboardPluginIndex + delta + pluginItems.length) % pluginItems.length
+    pluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
+  }
+
+  function activateKeyboardPlugin() {
+    if (keyboardPluginIndex < 0 || keyboardPluginIndex >= pluginItems.length) return
+    if (editing) setExpanded(pluginItems[keyboardPluginIndex].id)
+    else activateItem(pluginItems[keyboardPluginIndex])
+  }
+
+  function persistDrawerSetting(name, value) {
+    var entry = DrawerModel.persistedEntry(settings, drawerPages)
+    entry[name] = value
+    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+      bar.shell.updateEntryInline("gshulga.drawer", entry)
+  }
+
+  function resizePosition(handle, x, y) {
+    var target = anchorWindow ? anchorWindow.contentItem : surface.contentItem
+    var point = handle.mapToItem(target, x, y)
+    return verticalEdge ? point.x : point.y
+  }
+
+  function beginDrawerResize(position) {
+    resizingDrawer = true
+    drawerResizeStart = position
+    drawerResizeStartExtent = drawerExtent
+    drawerResizePreview = drawerExtent
+  }
+
+  function updateDrawerResize(position) {
+    if (!resizingDrawer) return
+    var delta = position - drawerResizeStart
+    if (edge === "right" || edge === "bottom") delta = -delta
+    drawerResizePreview = Math.round(Math.max(Style.space(260), Math.min(Style.space(900), drawerResizeStartExtent + delta)) / 5) * 5
+  }
+
+  function finishDrawerResize() {
+    if (!resizingDrawer) return
+    persistDrawerSetting("edgeSize", drawerResizePreview)
+    resizingDrawer = false
   }
 
   function itemFor(id) {
@@ -98,6 +205,17 @@ Item {
     for (var i = 0; i < pluginItems.length; i++)
       if (resolvedPluginId(pluginItems[i]) === wanted) return i
     return -1
+  }
+
+  function hasPlugin(id) {
+    var wanted = resolvedPluginId({ id: id })
+    for (var pageIndex = 0; pageIndex < drawerPages.length; pageIndex++) {
+      var items = drawerPages[pageIndex].items || []
+      for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+        if (resolvedPluginId(items[itemIndex]) === wanted) return true
+      }
+    }
+    return false
   }
 
   function setExpanded(id) {
@@ -119,6 +237,7 @@ Item {
     resizingId = ""
     expandedId = ""
     catalogOpen = false
+    settingsOpen = false
     panelEpoch += 1
   }
 
@@ -198,15 +317,17 @@ Item {
 
   function updateDropTarget(x, y) {
     if (!editing || draggedId === "") return
-    var contentY = y
+    var position = verticalEdge ? y : x
     var previousRow = null
     for (var i = 0; i < pluginItems.length; i++) {
       var row = pluginList.itemAtIndex(i)
       if (!row) continue
-      if (contentY < row.y + row.height / 2) {
+      var start = verticalEdge ? row.y : row.x
+      var extent = verticalEdge ? row.height : row.width
+      if (position < start + extent / 2) {
         dropTargetId = row.pluginId
         dropAfter = false
-        dropLineY = row.y
+        dropLineY = start
         return
       }
       previousRow = row
@@ -214,7 +335,7 @@ Item {
     if (!previousRow) return
     dropTargetId = previousRow.pluginId
     dropAfter = true
-    dropLineY = previousRow.y + previousRow.height
+    dropLineY = (verticalEdge ? previousRow.y + previousRow.height : previousRow.x + previousRow.width)
   }
 
   function moveItem(sourceId, targetId, after) {
@@ -227,7 +348,7 @@ Item {
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || itemIndex(id) >= 0 || id === "gshulga.drawer" || !pluginEnabled({ id: id })) return
+    if (id === "" || hasPlugin(id) || id === "gshulga.drawer" || !pluginEnabled({ id: id })) return
     var manifest = pluginFor(id)
     var next = copyItems(pluginItems)
     next.push({
@@ -279,7 +400,7 @@ Item {
     var seen = ({})
     for (var id in plugins) {
       var resolvedId = resolvedPluginId({ id: id })
-      if (resolvedId === "gshulga.drawer" || itemIndex(resolvedId) >= 0 || seen[resolvedId]) continue
+      if (resolvedId === "gshulga.drawer" || hasPlugin(resolvedId) || seen[resolvedId]) continue
       seen[resolvedId] = true
       var manifest = pluginFor(resolvedId)
       if (!manifest) continue
@@ -511,16 +632,27 @@ Item {
 
   onSettingsChanged: {
     deactivateActivePanels("settings-change")
-    pluginItems = itemsFromSettings()
+    var selectedTitle = currentPageRecord() ? String(currentPageRecord().title) : ""
+    drawerPages = pagesFromSettings()
+    currentPage = 0
+    for (var index = 0; index < drawerPages.length; index++) {
+      if (String(drawerPages[index].title) === selectedTitle) {
+        currentPage = index
+        break
+      }
+    }
   }
-  Component.onCompleted: pluginItems = itemsFromSettings()
+  Component.onCompleted: drawerPages = pagesFromSettings()
 
   onOpenedChanged: {
     if (bar && popoutOwner) {
       if (opened) bar.requestPopout(popoutOwner)
       else bar.releasePopout(popoutOwner)
     }
-    if (opened) adaptPreferredPanels()
+    if (opened) {
+      currentPage = 0
+      adaptPreferredPanels()
+    }
   }
 
   Process {
@@ -571,9 +703,9 @@ Item {
     }
 
     implicitWidth: root.verticalEdge
-      ? Math.min(root.drawerWidth, screen ? screen.width : root.drawerWidth) : 0
+      ? Math.min(root.drawerExtent, screen ? screen.width : root.drawerExtent) : 0
     implicitHeight: root.verticalEdge ? 0
-      : Math.min(root.drawerHeight, screen ? screen.height : root.drawerHeight)
+      : Math.min(root.drawerExtent, screen ? screen.height : root.drawerExtent)
 
     Shortcut {
       sequence: "Escape"
@@ -585,9 +717,29 @@ Item {
       }
     }
 
+    Shortcut {
+      sequence: "Alt+1"
+      enabled: root.opened
+      context: Qt.WindowShortcut
+      onActivated: root.selectPage(0)
+    }
+    Shortcut { sequence: "Alt+2"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(1) }
+    Shortcut { sequence: "Alt+3"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(2) }
+    Shortcut { sequence: "Alt+4"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(3) }
+    Shortcut { sequence: "Alt+5"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(4) }
+    Shortcut { sequence: "Alt+6"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(5) }
+    Shortcut { sequence: "Alt+7"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(6) }
+    Shortcut { sequence: "Alt+8"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(7) }
+    Shortcut { sequence: "Alt+9"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(8) }
+
     Rectangle {
+      id: drawerBody
       anchors.fill: parent
-      color: Color.popups.background
+      anchors.topMargin: root.barPosition === "top" ? root.barInset : 0
+      anchors.rightMargin: root.barPosition === "right" ? root.barInset : 0
+      anchors.bottomMargin: root.barPosition === "bottom" ? root.barInset : 0
+      anchors.leftMargin: root.barPosition === "left" ? root.barInset : 0
+      color: root.transparentBackground ? Qt.rgba(0, 0, 0, 0.72) : Color.popups.background
       border.width: 1
       border.color: Color.popups.border
 
@@ -595,6 +747,18 @@ Item {
         id: keyCatcher
         anchors.fill: parent
         focus: root.opened
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+            root.moveKeyboardPlugin(-1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
+            root.moveKeyboardPlugin(1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            root.activateKeyboardPlugin()
+            event.accepted = true
+          }
+        }
         Item {
           anchors.fill: parent
           anchors.margins: Style.space(14)
@@ -611,7 +775,7 @@ Item {
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
-              text: "PLUGINS"
+              text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
               color: root.foreground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
@@ -621,11 +785,26 @@ Item {
             }
 
             Rectangle {
+              id: settingsButton
+              visible: titleHover.containsMouse || root.settingsOpen
+              anchors.right: editButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Math.round(Style.space(28))
+              height: width
+              radius: height / 2
+              color: settingsHover.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+              Text { anchors.centerIn: parent; text: "\uf013"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              MouseArea { id: settingsHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = true }
+            }
+
+            Rectangle {
               id: editButton
+              visible: titleHover.containsMouse || root.editing
               anchors.right: pinButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              width: editText.implicitWidth + Style.space(16)
+              width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
               radius: height / 2
               color: root.editing
@@ -637,7 +816,7 @@ Item {
               Text {
                 id: editText
                 anchors.centerIn: parent
-                text: root.editing ? "DONE" : "EDIT"
+                text: root.editing ? "\uf00c" : "\uf044"
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
@@ -655,9 +834,10 @@ Item {
 
             Rectangle {
               id: pinButton
+              visible: titleHover.containsMouse || root.pinned
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              width: pinText.implicitWidth + Style.space(16)
+              width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
               radius: height / 2
               color: root.pinned
@@ -669,7 +849,7 @@ Item {
               Text {
                 id: pinText
                 anchors.centerIn: parent
-                text: root.pinned ? "UNPIN" : "PIN"
+                text: root.pinned ? "\uf1f8" : "\uf08d"
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
@@ -688,15 +868,26 @@ Item {
               }
             }
 
+            MouseArea {
+              id: titleHover
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              hoverEnabled: true
+              z: -1
+            }
+
           }
 
           ListView {
             id: pluginList
             anchors.top: titleRow.bottom
             anchors.topMargin: Style.space(10)
-            anchors.bottom: root.editing ? addButton.top : parent.bottom
-            anchors.bottomMargin: root.editing ? Style.space(10) : 0
+            anchors.bottom: pageCarousel.top
+            anchors.bottomMargin: Style.space(8)
             width: parent.width
+            orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
             clip: true
             interactive: root.resizingId === "" && root.draggedId === ""
             spacing: Style.space(7)
@@ -716,8 +907,8 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
-              width: pluginList.width
-              height: (root.editing ? header.height : 0) + content.height
+              width: root.verticalEdge ? pluginList.width : Math.max(Style.space(260), pluginList.width * 0.82)
+              height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
               z: root.draggedId === pluginId ? 3 : 1
 
               Rectangle {
@@ -845,7 +1036,7 @@ Item {
                 anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
-                  ? root.panelHeight(pluginRow.plugin)
+                  ? (root.verticalEdge ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
                   : 0
                 clip: true
 
@@ -855,7 +1046,8 @@ Item {
                   radius: Style.cornerRadius / 2
                   color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
                   border.width: 1
-                  border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+                  border.color: pluginRow.index === root.keyboardPluginIndex
+                    ? Color.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
 
                   Loader {
                     id: pageLoader
@@ -929,7 +1121,7 @@ Item {
 
                 Rectangle {
                   id: resizeHandle
-                  visible: root.editing && pluginRow.expanded
+                  visible: root.editing && pluginRow.expanded && root.verticalEdge
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.bottom: parent.bottom
@@ -977,10 +1169,10 @@ Item {
 
             Rectangle {
               visible: root.draggedId !== "" && root.dropTargetId !== ""
-              x: Style.space(4)
-              y: root.dropLineY - height / 2
-              width: parent.width - Style.space(8)
-              height: Math.max(2, Math.round(Style.space(2)))
+              x: root.verticalEdge ? Style.space(4) : root.dropLineY - width / 2
+              y: root.verticalEdge ? root.dropLineY - height / 2 : Style.space(4)
+              width: root.verticalEdge ? parent.width - Style.space(8) : Math.max(2, Math.round(Style.space(2)))
+              height: root.verticalEdge ? Math.max(2, Math.round(Style.space(2))) : parent.height - Style.space(8)
               radius: height / 2
               color: Color.accent
               z: 3
@@ -990,7 +1182,8 @@ Item {
           Rectangle {
             id: addButton
             visible: root.editing
-            anchors.bottom: parent.bottom
+            anchors.bottom: pageCarousel.top
+            anchors.bottomMargin: Style.space(8)
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(parent.width, Style.space(210))
             height: Math.round(Style.space(36))
@@ -1001,7 +1194,7 @@ Item {
 
             Text {
               anchors.centerIn: parent
-              text: "+ Add installed plugin"
+              text: "\uf067"
               color: root.foreground
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -1013,6 +1206,59 @@ Item {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: root.catalogOpen = true
+            }
+          }
+
+          Rectangle {
+            id: pageCarousel
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, Style.space(420))
+            height: Math.round(Style.space(34))
+            radius: height / 2
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+
+            ListView {
+              anchors.left: parent.left
+              anchors.right: pageAdd.left
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.margins: Style.space(4)
+              height: parent.height - Style.space(8)
+              orientation: ListView.Horizontal
+              spacing: Style.space(4)
+              clip: true
+              model: root.drawerPages
+              delegate: Rectangle {
+                required property int index
+                required property var modelData
+                width: pageLabel.implicitWidth + Style.space(16)
+                height: parent.height
+                radius: height / 2
+                color: root.currentPage === index ? Style.selectedFillFor(root.foreground, Color.accent) : "transparent"
+                Text {
+                  id: pageLabel
+                  anchors.centerIn: parent
+                  text: (index + 1) + " " + String(modelData.title)
+                  color: root.foreground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
+              }
+            }
+
+            Text {
+              id: pageAdd
+              visible: root.editing
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "\uf067"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
             }
           }
         }
@@ -1046,6 +1292,35 @@ Item {
           Drag.keys: ["omarchy-drawer-plugin"]
           Drag.hotSpot.x: width / 2
           Drag.hotSpot.y: height / 2
+        }
+      }
+
+      Rectangle {
+        id: drawerResizeHandle
+        visible: root.editing
+        anchors.right: root.verticalEdge && root.edge === "left" ? parent.right : undefined
+        anchors.left: root.verticalEdge && root.edge === "right" ? parent.left : undefined
+        anchors.bottom: !root.verticalEdge && root.edge === "top" ? parent.bottom : undefined
+        anchors.top: !root.verticalEdge && root.edge === "bottom" ? parent.top : undefined
+        width: root.verticalEdge ? Math.round(Style.space(8)) : parent.width
+        height: root.verticalEdge ? parent.height : Math.round(Style.space(8))
+        color: drawerResizeMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+        z: 9
+
+        MouseArea {
+          id: drawerResizeMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          preventStealing: true
+          cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
+          onPressed: function(mouse) {
+            root.beginDrawerResize(root.resizePosition(drawerResizeHandle, mouse.x, mouse.y))
+          }
+          onPositionChanged: function(mouse) {
+            root.updateDrawerResize(root.resizePosition(drawerResizeHandle, mouse.x, mouse.y))
+          }
+          onReleased: root.finishDrawerResize()
+          onCanceled: function() { root.resizingDrawer = false }
         }
       }
     }
@@ -1188,6 +1463,171 @@ Item {
               opacity: 0.64
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+      }
+    }
+
+    Rectangle {
+      id: settingsOverlay
+      anchors.fill: parent
+      visible: root.settingsOpen
+      z: 11
+      color: Qt.rgba(0, 0, 0, 0.56)
+
+      MouseArea { anchors.fill: parent; onClicked: root.settingsOpen = false }
+
+      Rectangle {
+        anchors.centerIn: parent
+        width: Math.min(parent.width - Style.space(36), Style.space(380))
+        height: Math.min(parent.height - Style.space(36), Style.space(360))
+        radius: Style.cornerRadius
+        color: Color.popups.background
+        border.width: 1
+        border.color: Color.popups.border
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          anchors.fill: parent
+          anchors.margins: Style.space(16)
+          spacing: Style.space(14)
+
+          Item {
+            width: parent.width
+            height: settingsTitle.implicitHeight
+            Text {
+              id: settingsTitle
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "DRAWER"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+            Text {
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              text: "\uf00d"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = false }
+            }
+          }
+
+          Text {
+            text: "EDGE"
+            color: root.foreground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            spacing: Style.space(8)
+            Repeater {
+              model: [
+                { edge: "left", icon: "\uef3a" },
+                { edge: "right", icon: "\uef3b" },
+                { edge: "top", icon: "\uf453" },
+                { edge: "bottom", icon: "\uf0489" }
+              ]
+              delegate: Rectangle {
+                required property var modelData
+                width: Math.round(Style.space(38))
+                height: width
+                radius: height / 2
+                color: root.edge === modelData.edge
+                  ? Style.selectedFillFor(root.foreground, Color.accent)
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+                Text {
+                  anchors.centerIn: parent
+                  text: modelData.icon
+                  color: root.foreground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.body
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.persistDrawerSetting("edge", modelData.edge)
+                }
+              }
+            }
+          }
+
+          Text {
+            text: "PAGE"
+            color: root.foreground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Rectangle {
+            width: parent.width
+            height: Math.round(Style.space(38))
+            radius: Style.cornerRadius / 2
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+            TextInput {
+              id: pageNameInput
+              anchors.left: parent.left
+              anchors.right: removePageButton.left
+              anchors.margins: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              selectByMouse: true
+              onEditingFinished: root.renameCurrentPage(text)
+            }
+            Text {
+              id: removePageButton
+              visible: root.drawerPages.length > 1
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "\uf1f8"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
+            }
+          }
+
+          Rectangle {
+            width: parent.width
+            height: Math.round(Style.space(42))
+            radius: Style.cornerRadius / 2
+            color: root.transparentBackground
+              ? Style.selectedFillFor(root.foreground, Color.accent)
+              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "\uf2dc"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+            }
+            Text {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.transparentBackground ? "ON" : "OFF"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.persistDrawerSetting("transparentBackground", !root.transparentBackground)
             }
           }
         }

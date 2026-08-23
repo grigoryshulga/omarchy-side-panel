@@ -19,7 +19,8 @@
     "allowMultiple": false,
     "defaults": {
       "edge": "left",
-      "layoutMode": "overlay"
+      "layoutMode": "overlay",
+      "transparentBackground": false
     },
     "schema": [
       {
@@ -37,6 +38,13 @@
         "description": "Overlay windows or reserve screen space while Drawer is open.",
         "options": ["overlay", "reserve"],
         "defaultValue": "overlay"
+      },
+      {
+        "key": "transparentBackground",
+        "type": "boolean",
+        "label": "Transparent background",
+        "description": "Use a translucent Drawer background.",
+        "defaultValue": false
       }
     ]
   }

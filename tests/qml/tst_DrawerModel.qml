@@ -20,13 +20,17 @@ TestCase {
     compare(items[0].embedding, "")
   }
 
-  function test_legacy_pages_are_flattened_only_when_plugins_are_absent() {
-    var legacy = DrawerModel.itemsFromSettings({ pages: [{ items: [{ id: "one" }] }] }, [], resolve)
+  function test_pages_preserve_names_and_migrate_the_legacy_plugin_list() {
+    var legacy = DrawerModel.pagesFromSettings({ plugins: [{ id: "one" }] }, [], resolve)
     compare(legacy.length, 1)
-    compare(legacy[0].id, "one")
+    compare(legacy[0].title, "Plugins")
+    compare(legacy[0].items[0].id, "one")
 
-    var explicit = DrawerModel.itemsFromSettings({ plugins: [], pages: [{ items: [{ id: "one" }] }] }, [], resolve)
-    compare(explicit.length, 0)
+    var pages = DrawerModel.pagesFromSettings({ pages: [{ title: "Work", items: [{ id: "one" }] }, { items: [{ id: "one" }] }] }, [], resolve)
+    compare(pages.length, 2)
+    compare(pages[0].title, "Work")
+    compare(pages[1].title, "Page 2")
+    compare(pages[1].items.length, 0)
   }
 
   function test_move_and_resize_are_immutable() {
@@ -36,5 +40,17 @@ TestCase {
     compare(source[0].id, "one")
     compare(DrawerModel.resizeHeight(200, 10, -1000, 160, 520, 5), 160)
     compare(DrawerModel.resizeHeight(200, 10, 333, 160, 520, 5), 520)
+  }
+
+  function test_persisted_entry_uses_only_named_pages() {
+    var entry = DrawerModel.persistedEntry(
+      { id: "gshulga.drawer", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left" },
+      [{ title: "Main", items: [{ id: "one" }] }]
+    )
+    compare(entry.edge, "left")
+    verify(entry.plugins === undefined)
+    compare(entry.pages.length, 1)
+    compare(entry.pages[0].title, "Main")
+    compare(entry.pages[0].items[0].id, "one")
   }
 }

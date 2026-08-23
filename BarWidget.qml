@@ -10,7 +10,8 @@ BarWidget {
 
   moduleName: "gshulga.drawer"
 
-  readonly property string icon: "\ueab6"
+  readonly property string icon: edge === "left" ? ""
+    : (edge === "right" ? "" : (edge === "top" ? "󱔓" : "󱂩"))
   readonly property string edge: {
     var value = String(setting("edge", "left")).toLowerCase()
     return ["left", "right", "top", "bottom"].indexOf(value) >= 0 ? value : "left"
