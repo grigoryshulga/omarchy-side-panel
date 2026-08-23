@@ -21,8 +21,6 @@ Item {
   property string expandedId: ""
   property string menuId: ""
   property string draggedId: ""
-  property real dragX: 0
-  property real dragY: 0
   property real dragWidth: 0
   property var activePanels: []
   property var pluginItems: []
@@ -180,16 +178,9 @@ Item {
     menuId = ""
     draggedId = row.pluginId
     var point = row.mapToItem(keyCatcher, x, y)
-    dragX = point.x
-    dragY = point.y
     dragWidth = row.width
-  }
-
-  function updateDrag(row, x, y) {
-    if (draggedId !== row.pluginId) return
-    var point = row.mapToItem(keyCatcher, x, y)
-    dragX = point.x
-    dragY = point.y
+    dragPreview.x = point.x - dragWidth / 2
+    dragPreview.y = point.y - dragPreview.height / 2
   }
 
   function finishDrag() {
@@ -426,6 +417,16 @@ Item {
     implicitWidth: root.edge === "left" || root.edge === "right" ? root.drawerWidth : 0
     implicitHeight: root.edge === "top" || root.edge === "bottom" ? root.drawerHeight : 0
 
+    Shortcut {
+      sequence: "Escape"
+      enabled: root.opened
+      context: Qt.WindowShortcut
+      onActivated: {
+        if (root.catalogOpen) root.catalogOpen = false
+        else root.close()
+      }
+    }
+
     Rectangle {
       anchors.fill: parent
       color: Color.popups.background
@@ -436,11 +437,6 @@ Item {
         id: keyCatcher
         anchors.fill: parent
         focus: root.opened
-        Keys.onEscapePressed: {
-          if (root.catalogOpen) root.catalogOpen = false
-          else root.close()
-        }
-
         Item {
           anchors.fill: parent
           anchors.margins: Style.space(14)
@@ -651,11 +647,10 @@ Item {
                     id: reorderMouse
                     anchors.fill: parent
                     cursorShape: Qt.DragMoveCursor
+                    drag.target: dragPreview
+                    drag.smoothed: false
                     onPressed: function(mouse) {
                       root.beginDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
-                    }
-                    onPositionChanged: function(mouse) {
-                      root.updateDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
                     }
                     onReleased: root.finishDrag()
                   }
@@ -919,8 +914,6 @@ Item {
         Rectangle {
           id: dragPreview
           visible: root.editing && root.draggedId !== ""
-          x: root.dragX - width / 2
-          y: root.dragY - height / 2
           width: root.dragWidth
           height: Math.round(Style.space(42))
           radius: Style.cornerRadius / 2
