@@ -22,6 +22,9 @@ Item {
   property string menuId: ""
   property string draggedId: ""
   property real dragWidth: 0
+  property string dropTargetId: ""
+  property bool dropAfter: false
+  property real dropLineY: 0
   property var activePanels: []
   property var pluginItems: []
   property var adaptedUrls: ({})
@@ -187,6 +190,32 @@ Item {
     if (draggedId === "") return
     dragPreview.Drag.drop()
     draggedId = ""
+  }
+
+  function clearDropTarget() {
+    dropTargetId = ""
+    dropAfter = false
+  }
+
+  function updateDropTarget(x, y) {
+    if (!editing || draggedId === "") return
+    var contentY = y + pluginList.contentY
+    var previousRow = null
+    for (var i = 0; i < pluginItems.length; i++) {
+      var row = pluginList.itemAtIndex(i)
+      if (!row) continue
+      if (contentY < row.y + row.height / 2) {
+        dropTargetId = row.pluginId
+        dropAfter = false
+        dropLineY = row.y - pluginList.contentY
+        return
+      }
+      previousRow = row
+    }
+    if (!previousRow) return
+    dropTargetId = previousRow.pluginId
+    dropAfter = true
+    dropLineY = previousRow.y + previousRow.height - pluginList.contentY
   }
 
   function moveItem(sourceId, targetId, after) {
@@ -555,16 +584,6 @@ Item {
               height: (root.editing ? header.height : 0) + content.height
               z: root.menuId === pluginId ? 4 : (root.draggedId === pluginId ? 3 : 1)
 
-              DropArea {
-                anchors.fill: parent
-                enabled: root.editing
-                keys: ["omarchy-drawer-plugin"]
-                onDropped: function(drop) {
-                  root.moveItem(root.draggedId, pluginRow.pluginId, drop.position.y > pluginRow.height / 2)
-                  drop.accepted = true
-                }
-              }
-
               Rectangle {
                 id: header
                 visible: root.editing
@@ -865,19 +884,31 @@ Item {
               }
             }
 
-            footer: Item {
-              width: pluginList.width
-              height: root.editing ? Math.round(Style.space(24)) : 0
-
-              DropArea {
-                anchors.fill: parent
-                keys: ["omarchy-drawer-plugin"]
-                onDropped: function(drop) {
-                  var last = root.pluginItems.length > 0 ? root.pluginItems[root.pluginItems.length - 1] : null
-                  if (last) root.moveItem(root.draggedId, last.id, true)
-                  drop.accepted = true
-                }
+            DropArea {
+              id: listDropArea
+              anchors.fill: parent
+              enabled: root.editing
+              keys: ["omarchy-drawer-plugin"]
+              z: 2
+              onEntered: function(drag) { root.updateDropTarget(drag.position.x, drag.position.y) }
+              onPositionChanged: function(drag) { root.updateDropTarget(drag.position.x, drag.position.y) }
+              onExited: root.clearDropTarget()
+              onDropped: function(drop) {
+                root.moveItem(root.draggedId, root.dropTargetId, root.dropAfter)
+                root.clearDropTarget()
+                drop.accepted = true
               }
+            }
+
+            Rectangle {
+              visible: root.draggedId !== "" && root.dropTargetId !== ""
+              x: Style.space(4)
+              y: root.dropLineY - height / 2
+              width: parent.width - Style.space(8)
+              height: Math.max(2, Math.round(Style.space(2)))
+              radius: height / 2
+              color: Color.accent
+              z: 3
             }
           }
 

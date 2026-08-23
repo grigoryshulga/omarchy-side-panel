@@ -77,6 +77,7 @@ order or membership is changed.
   `UNPIN` or the Drawer bar icon to close it.
 - In edit mode, click `...` to set a panel height or remove the plugin from
   Drawer. Drag the up/down handle onto a plugin header to reorder it.
+  A highlighted line previews the insertion position.
 - In edit mode, click `+` to see every installed Omarchy plugin not already in
   the list, then add one immediately. Disabled plugins are identified in that
   catalog; their native fallback requires enabling them in Omarchy first.
