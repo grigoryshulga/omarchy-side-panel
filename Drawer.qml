@@ -7,7 +7,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-QtObject {
+Item {
   id: root
 
   property QtObject bar: null
