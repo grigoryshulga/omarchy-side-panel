@@ -11,17 +11,24 @@ entry-point QML. Most widgets own a `KeyboardPanel` anchored to their own bar
 button, assume bar-managed lifecycle, and may be instantiated once per output.
 Forcing that QML into another container breaks those assumptions.
 
-Drawer therefore has two explicit modes:
+Drawer therefore has three explicit modes:
 
-- **Embedded page:** a plugin opts in with `entryPoints.drawerPage`. The drawer
-  loads that component inside its content area and supplies optional `drawer`,
-  `bar`, `settings`, `pluginId`, and `service` properties.
+- **Automatic standard-panel embedding:** when a plugin uses Omarchy's standard
+  `KeyboardPanel`, Drawer copies the plugin into
+  `$XDG_CACHE_HOME/omarchy-drawer/`, replaces that one host with
+  `DrawerPanelHost`, replaces copied IPC handlers with inert local shims, and
+  routes close lifecycle to Drawer. The installed plugin and Omarchy files are
+  never changed.
+- **Explicit embedded page:** a plugin may opt in with `entryPoints.drawerPage`.
+  Drawer loads that component directly and supplies optional `drawer`, `bar`,
+  `settings`, `pluginId`, and `service` properties.
 - **Native fallback:** any listed plugin without `drawerPage` remains usable.
   Drawer shows an `Open native panel` action and calls Omarchy's normal
   `shell.summon(id)` route. The target plugin must remain enabled.
 
-This keeps Drawer compatible with arbitrary existing plugins while giving
-plugin authors a small, stable opt-in contract for a genuine embedded UI.
+Standard panels are embedded without source changes. The explicit page route
+remains the stable option for plugin authors, while the native fallback covers
+custom windows that cannot be reparented under Wayland.
 
 ## Install
 
@@ -106,3 +113,21 @@ Item {
 - Left/Right: select a page.
 - Up/Down: select a plugin.
 - Enter: open a non-embedded plugin in its native panel.
+
+## Automatic Embedding
+
+Press `Embed in Drawer` for a listed plugin. Drawer tries the standard adapter
+before it offers native fallback. It supports both conventional Omarchy shapes:
+
+- a `barWidget` entry point whose QML contains `KeyboardPanel`;
+- a `barWidget` entry point that loads a sibling `Panel.qml` containing
+  `KeyboardPanel`.
+
+The adapter uses a generated copy solely for the current shell session. The
+next shell session regenerates that copy from the installed plugin, so a plugin
+update is picked up automatically. It cannot embed a plugin that creates its own `PanelWindow`,
+overlay, or non-standard popup host: Wayland windows cannot be reparented into
+another QML item after creation. Those plugins retain the native fallback.
+
+See `docs/automatic-embedding.md` for the transformation contract and safety
+boundaries.

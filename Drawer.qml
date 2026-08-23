@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -17,6 +18,10 @@ Item {
   property bool opened: false
   property int selectedPage: 0
   property int selectedItem: 0
+  property var adaptedUrls: ({})
+  property string adaptingId: ""
+  property string adaptationFailedId: ""
+  property string adapterError: ""
   readonly property int drawerWidth: Math.round(Style.space(420))
   readonly property int drawerHeight: Math.round(Style.space(330))
   readonly property color foreground: Color.popups.text
@@ -29,6 +34,12 @@ Item {
   readonly property var currentItem: currentPage && Array.isArray(currentPage.items)
     && currentPage.items.length > 0
     ? currentPage.items[Math.max(0, Math.min(selectedItem, currentPage.items.length - 1))] : null
+  readonly property string currentExplicitUrl: drawerPageUrl(currentItem)
+  readonly property string currentAdaptedUrl: adaptedUrl(currentItem)
+  readonly property string currentPageUrl: currentExplicitUrl || currentAdaptedUrl
+  readonly property bool embedding: currentPageUrl !== ""
+  readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
+  readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -43,6 +54,7 @@ Item {
         items: [
           { id: "io.github.sotoaugusto.ticktick", label: "TickTick", icon: "\uf0ae" },
           { id: "gshulga.jira", label: "Jira", icon: "\ue75c" },
+          { id: "omarchy.bluetooth", label: "Bluetooth", icon: "\uf293" },
           { id: "b.everything", label: "Everything", icon: "\uf002" }
         ]
       }]
@@ -82,7 +94,40 @@ Item {
     return registry.entryPointUrl(manifest, "drawerPage")
   }
 
-  function isEmbedded(item) { return drawerPageUrl(item) !== "" }
+  function adaptedUrl(item) {
+    if (!item) return ""
+    return String(adaptedUrls[resolvedPluginId(item)] || "")
+  }
+
+  function canAdapt(item) {
+    var manifest = item ? pluginFor(item.id) : null
+    return !!(manifest && manifest.entryPoints && manifest.entryPoints.barWidget && manifest.__sourceDir)
+  }
+
+  function cacheName(id) {
+    return encodeURIComponent(String(id || ""))
+  }
+
+  function adaptStandardPanel(item) {
+    if (!item || !canAdapt(item) || adaptingId !== "") return
+    var manifest = pluginFor(item.id)
+    var id = resolvedPluginId(item)
+    adaptingId = id
+    adaptationFailedId = ""
+    adapterError = ""
+    adapter.command = [
+      "bash",
+      pluginDir + "bin/omarchy-drawer-adapt",
+      String(manifest.__sourceDir),
+      String(manifest.entryPoints.barWidget),
+      cacheRoot + "/" + cacheName(id),
+      pluginDir
+    ]
+    adapter.running = true
+  }
+
+  function isEmbedded(item) { return drawerPageUrl(item) !== "" || adaptedUrl(item) !== "" }
+  function adaptationFailed(item) { return resolvedPluginId(item) === adaptationFailedId }
 
   function selectPage(index) {
     if (index < 0 || index >= pages.length) return
@@ -97,7 +142,14 @@ Item {
   }
 
   function open() { opened = true }
-  function close() { opened = false }
+  function deactivatePage() {
+    if (pageLoader.item && typeof pageLoader.item.drawerDeactivate === "function")
+      pageLoader.item.drawerDeactivate()
+  }
+  function close() {
+    deactivatePage()
+    opened = false
+  }
   function toggle() { opened ? close() : open() }
 
   function launchFallback(item) {
@@ -109,18 +161,22 @@ Item {
 
   function activateItem(item) {
     if (!item) return
-    if (!isEmbedded(item)) launchFallback(item)
+    if (isEmbedded(item)) return
+    if (canAdapt(item) && !adaptationFailed(item)) adaptStandardPanel(item)
+    else launchFallback(item)
   }
 
   function injectPage(item) {
     var page = pageLoader.item
     if (!page) return
     if ("drawer" in page) page.drawer = root
+    if ("drawerHost" in page) page.drawerHost = root
     if ("bar" in page) page.bar = root.bar
     if ("settings" in page) page.settings = item || ({})
     if ("pluginId" in page) page.pluginId = item ? String(item.id) : ""
     if ("service" in page && root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
       page.service = root.bar.shell.serviceFor(root.resolvedPluginId(item))
+    if (typeof page.open === "function" && opened) page.open()
   }
 
   onOpenedChanged: {
@@ -134,6 +190,37 @@ Item {
     if (currentPage && selectedItem >= currentPage.items.length) selectedItem = 0
   }
   onCurrentItemChanged: Qt.callLater(function() { root.injectPage(root.currentItem) })
+
+  Process {
+    id: adapter
+    stdout: StdioCollector {
+      id: adapterOutput
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: adapterErrors
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      var id = root.adaptingId
+      root.adaptingId = ""
+      if (exitCode !== 0) {
+        root.adaptationFailedId = id
+        root.adapterError = String(adapterErrors.text || "This plugin does not expose a standard Omarchy panel.").trim()
+        return
+      }
+      var url = String(adapterOutput.text || "").trim()
+      if (url === "") {
+        root.adaptationFailedId = id
+        root.adapterError = "The adapter produced no embedded page."
+        return
+      }
+      var next = ({})
+      for (var key in root.adaptedUrls) next[key] = root.adaptedUrls[key]
+      next[id] = url
+      root.adaptedUrls = next
+    }
+  }
 
   PanelWindow {
     id: surface
@@ -311,8 +398,8 @@ Item {
                     id: pageLoader
                     anchors.fill: parent
                     anchors.margins: Style.space(12)
-                    active: root.opened && root.isEmbedded(root.currentItem)
-                    source: root.drawerPageUrl(root.currentItem)
+                    active: root.opened && root.embedding
+                    source: root.currentPageUrl
                     onLoaded: root.injectPage(root.currentItem)
                   }
 
@@ -320,7 +407,7 @@ Item {
                     anchors.centerIn: parent
                     width: parent.width - Style.space(36)
                     spacing: Style.space(8)
-                    visible: !root.isEmbedded(root.currentItem)
+                    visible: !root.embedding
 
                     Text {
                       width: parent.width
@@ -334,7 +421,11 @@ Item {
 
                     Text {
                       width: parent.width
-                      text: "This plugin has no drawer page. Open it in its native Omarchy panel instead."
+                      text: root.adaptingId === root.resolvedPluginId(root.currentItem)
+                        ? "Embedding the standard Omarchy panel…"
+                        : (root.adaptationFailed(root.currentItem) && root.adapterError !== ""
+                          ? root.adapterError
+                          : "Embed the standard Omarchy panel without modifying its plugin.")
                       color: root.foreground
                       opacity: 0.64
                       font.family: Style.font.family
@@ -345,9 +436,11 @@ Item {
 
                     Button {
                       anchors.horizontalCenter: parent.horizontalCenter
-                      text: "Open native panel"
+                      text: root.canAdapt(root.currentItem) && !root.adaptationFailed(root.currentItem)
+                        ? "Embed in Drawer" : "Open native panel"
                       foreground: root.foreground
-                      onClicked: root.launchFallback(root.currentItem)
+                      enabled: root.adaptingId === ""
+                      onClicked: root.activateItem(root.currentItem)
                     }
                   }
                 }
