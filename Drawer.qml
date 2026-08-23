@@ -348,12 +348,14 @@ Item {
 
   function open() { opened = true }
   function close() {
+    // Hide the host before deactivating embedded panels: their own lifecycle
+    // callbacks must not keep the Drawer surface visible.
+    opened = false
     deactivateActivePanels()
     catalogOpen = false
     menuId = ""
     editing = false
     expandedId = ""
-    opened = false
   }
   function toggle() { opened ? close() : open() }
 
@@ -607,7 +609,7 @@ Item {
 
                 Text {
                   id: expansionIndicator
-                  anchors.right: overflowButton.left
+                  anchors.right: reorderButton.left
                   anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
                   text: pluginRow.expanded ? "-" : "+"
@@ -626,6 +628,37 @@ Item {
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: root.setExpanded(pluginRow.pluginId)
+                }
+
+                Item {
+                  id: reorderButton
+                  anchors.right: overflowButton.left
+                  anchors.rightMargin: Style.space(2)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.round(Style.space(30))
+                  height: width
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "\u2195"
+                    color: root.foreground
+                    opacity: 0.5
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.subtitle
+                  }
+
+                  MouseArea {
+                    id: reorderMouse
+                    anchors.fill: parent
+                    cursorShape: Qt.DragMoveCursor
+                    onPressed: function(mouse) {
+                      root.beginDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
+                    }
+                    onPositionChanged: function(mouse) {
+                      root.updateDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
+                    }
+                    onReleased: root.finishDrag()
+                  }
                 }
 
                 Item {
@@ -648,28 +681,9 @@ Item {
                   MouseArea {
                     id: overflowMouse
                     anchors.fill: parent
-                    property bool dragged: false
-                    pressAndHoldInterval: 300
                     hoverEnabled: true
-                    cursorShape: dragged ? Qt.DragMoveCursor : Qt.PointingHandCursor
-                    onPressed: dragged = false
-                    onPressAndHold: function(mouse) {
-                      dragged = true
-                      root.beginDrag(pluginRow, overflowButton.x + mouse.x, overflowButton.y + mouse.y)
-                    }
-                    onPositionChanged: function(mouse) {
-                      if (dragged)
-                        root.updateDrag(pluginRow, overflowButton.x + mouse.x, overflowButton.y + mouse.y)
-                    }
-                    onReleased: {
-                      if (!dragged) return
-                      root.finishDrag()
-                      Qt.callLater(function() { overflowMouse.dragged = false })
-                    }
-                    onClicked: {
-                      if (dragged) return
-                      root.menuId = root.menuId === pluginRow.pluginId ? "" : pluginRow.pluginId
-                    }
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.menuId = root.menuId === pluginRow.pluginId ? "" : pluginRow.pluginId
                   }
 
                 }
