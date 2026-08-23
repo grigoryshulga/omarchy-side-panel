@@ -25,6 +25,18 @@ BarWidget {
   function open() { drawer.open() }
   function close() { drawer.close() }
   function togglePanel() { drawer.toggle() }
+  function summonFromIpc() {
+    if (bar && bar.shell && typeof bar.shell.summon === "function") bar.shell.summon(moduleName)
+    else open()
+  }
+  function hideFromIpc() {
+    if (bar && bar.shell && typeof bar.shell.hide === "function") bar.shell.hide(moduleName)
+    else close()
+  }
+  function toggleFromIpc() {
+    if (bar && bar.shell && typeof bar.shell.toggle === "function") bar.shell.toggle(moduleName)
+    else togglePanel()
+  }
   function closeForPopoutSwitch() {
     if (drawer.pinned) return
     popoutSwitchClosing = true
@@ -38,6 +50,7 @@ BarWidget {
   Drawer {
     id: drawer
     bar: root.bar
+    anchorItem: root
     settings: root.settings
     edge: root.edge
     layoutMode: root.layoutMode
@@ -47,11 +60,11 @@ BarWidget {
   IpcHandler {
     target: root.moduleName
 
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.togglePanel() }
+    function open(): void { root.summonFromIpc() }
+    function close(): void { root.hideFromIpc() }
+    function show(): void { root.summonFromIpc() }
+    function hide(): void { root.hideFromIpc() }
+    function toggle(): void { root.toggleFromIpc() }
   }
 
   WidgetButton {

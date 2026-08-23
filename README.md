@@ -14,15 +14,15 @@ Forcing that QML into another container breaks those assumptions.
 Drawer therefore has three explicit modes:
 
 - **Automatic standard-panel embedding:** when a plugin uses Omarchy's standard
-  `KeyboardPanel`, Drawer copies the plugin into
-  `$XDG_CACHE_HOME/omarchy-drawer/`, replaces that one host with
-  `DrawerPanelHost`, replaces copied IPC handlers with inert local shims, and
-  routes close lifecycle to Drawer. The installed plugin and Omarchy files are
-  never changed.
+  `KeyboardPanel`, Drawer copies the plugin into an immutable, fingerprinted
+  cache entry under `$XDG_CACHE_HOME/omarchy-drawer/`, replaces the one host
+  with `DrawerPanelHost`, and replaces copied IPC handlers and bar buttons with
+  inert local shims. The installed plugin and Omarchy files are never changed.
 - **Explicit embedded page:** a plugin may opt in with `entryPoints.drawerPage`.
   Drawer loads that component directly and supplies optional `drawer`, `bar`,
   `settings`, `pluginId`, and `service` properties.
-- **Native fallback:** any listed plugin without `drawerPage` remains usable.
+- **Native fallback:** a listed plugin without `drawerPage` remains usable when
+  it exposes an enabled native panel.
   Drawer shows an `Open native panel` action and calls Omarchy's normal
   `shell.summon(id)` route. The target plugin must remain enabled.
 
@@ -68,6 +68,10 @@ When `plugins` is omitted, Drawer starts with a small local default list.
 Existing `pages` configuration is flattened into the list the first time its
 order or membership is changed.
 
+Selecting `Embed in Drawer` persists `"embedding": "standard"` on that list
+item. Drawer regenerates the disposable adapted copy from the current plugin
+source on a later open, including after a shell or plugin update.
+
 ## Plugin List
 
 - Drawer normally shows plugin panels only, without per-plugin headers.
@@ -95,11 +99,22 @@ To expose a plugin page inside Drawer, add this entry point to its manifest:
 
 `DrawerPage.qml` must be an ordinary `Item` or control that sizes to its parent.
 It must not create a `PanelWindow`, manage an overlay, or depend on a bar-icon
-anchor. The drawer injects these optional properties when they exist:
+anchor. The preferred contract is one optional initialization method:
+
+```qml
+function initializeDrawer(context) {
+  // context.drawer, context.drawerItem, context.bar, context.settings,
+  // context.pluginId, and context.service
+}
+```
+
+For compatibility, the drawer otherwise injects these optional writable
+properties when they exist:
 
 - `drawer`: the Drawer host, including `close()`.
 - `bar`: the active Omarchy bar object.
-- `settings`: the selected page item object.
+- `drawerItem`: Drawer-specific list metadata.
+- `settings`: the selected plugin's native Omarchy settings, when available.
 - `pluginId`: the selected plugin id.
 - `service`: the plugin's singleton service, if it has one.
 
@@ -126,18 +141,20 @@ Item {
 
 ## Automatic Embedding
 
-Press `Embed in Drawer` for a listed plugin. Drawer tries the standard adapter
-before it offers native fallback. It supports both conventional Omarchy shapes:
+Press `Embed in Drawer` for an enabled listed plugin. Drawer tries the standard
+adapter before it offers native fallback. It supports both conventional Omarchy
+shapes:
 
 - a `barWidget` entry point whose QML contains `KeyboardPanel`;
 - a `barWidget` entry point that loads a sibling `Panel.qml` containing
   `KeyboardPanel`.
 
-The adapter uses a generated copy solely for the current shell session. The
-next shell session regenerates that copy from the installed plugin, so a plugin
-update is picked up automatically. It cannot embed a plugin that creates its own `PanelWindow`,
-overlay, or non-standard popup host: Wayland windows cannot be reparented into
-another QML item after creation. Those plugins retain the native fallback.
+The adapter uses a generated immutable cache copy. On the next Drawer open it
+rebuilds the copy from installed source when that source changes, so a plugin
+update is picked up automatically. It rejects a plugin that creates its own
+`PanelWindow`, overlay, or non-standard popup host: Wayland windows cannot be
+reparented into another QML item after creation. Those plugins retain native
+fallback only when Omarchy can summon them.
 
 See `docs/automatic-embedding.md` for the transformation contract and safety
 boundaries.

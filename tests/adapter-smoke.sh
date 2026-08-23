@@ -8,39 +8,40 @@ trap 'rm -rf "$cache_dir"' EXIT
 adapt() {
   local source_dir=$1
   local entry_point=$2
-  local output_dir=$3
-  bash "$project_dir/bin/omarchy-drawer-adapt" "$source_dir" "$entry_point" "$output_dir" "$project_dir"
+  local plugin_id=$3
+  bash "$project_dir/bin/omarchy-drawer-adapt" "$source_dir" "$entry_point" "$cache_dir" "$plugin_id" "$project_dir"
 }
 
-bluetooth_output=$(adapt /usr/share/omarchy/shell/plugins/panels/bluetooth Panel.qml "$cache_dir/bluetooth")
-test -f "$cache_dir/bluetooth/Panel.qml"
-test -f "$cache_dir/bluetooth/DrawerPanelHost.qml"
-test -f "$cache_dir/bluetooth/DrawerDisabledIpc.qml"
-grep -q 'DrawerPanelHost { anchors.fill: parent;' "$cache_dir/bluetooth/Panel.qml"
-grep -q 'property var drawerHost: null' "$cache_dir/bluetooth/Panel.qml"
-grep -q 'function drawerDeactivate() { root.controller.hide() }' "$cache_dir/bluetooth/Panel.qml"
-grep -q 'function close() { if (root.drawerHost) root.drawerHost.close(); else root.controller.hide() }' "$cache_dir/bluetooth/Panel.qml"
-grep -q 'if (root.drawerHost) root.drawerHost.close(); else root.controller.hide()' "$cache_dir/bluetooth/Panel.qml"
-grep -q 'DrawerDisabledIpc {' "$cache_dir/bluetooth/Panel.qml"
-! grep -q 'KeyboardPanel {' "$cache_dir/bluetooth/Panel.qml"
-test "$bluetooth_output" = "file://$cache_dir/bluetooth/Panel.qml"
+bluetooth_output=$(adapt /usr/share/omarchy/shell/plugins/panels/bluetooth Panel.qml omarchy.bluetooth)
+bluetooth_panel=${bluetooth_output#file://}
+test -f "$bluetooth_panel"
+test -f "$(dirname "$bluetooth_panel")/DrawerPanelHost.qml"
+test -f "$(dirname "$bluetooth_panel")/DrawerDisabledIpc.qml"
+test -f "$(dirname "$bluetooth_panel")/DrawerHiddenBarButton.qml"
+grep -q 'property var drawerHost: null' "$bluetooth_panel"
+grep -q 'DrawerPanelHost {' "$bluetooth_panel"
+grep -q 'drawerHost: root.drawerHost' "$bluetooth_panel"
+grep -q 'DrawerDisabledIpc {' "$bluetooth_panel"
+grep -q 'DrawerHiddenBarButton {' "$bluetooth_panel"
+! grep -q 'function drawerDeactivate()' "$bluetooth_panel"
+! grep -q 'KeyboardPanel {' "$bluetooth_panel"
+qmllint -I /usr/share/omarchy/shell "$bluetooth_panel"
 
-weather_output=$(adapt /usr/share/omarchy/shell/plugins/panels/weather BarWidget.qml "$cache_dir/weather")
-test -f "$cache_dir/weather/BarWidget.qml"
-test -f "$cache_dir/weather/Panel.qml"
-grep -q 'DrawerPanelHost { anchors.fill: parent;' "$cache_dir/weather/Panel.qml"
-! grep -q 'KeyboardPanel {' "$cache_dir/weather/Panel.qml"
-test "$weather_output" = "file://$cache_dir/weather/Panel.qml"
+weather_output=$(adapt /usr/share/omarchy/shell/plugins/panels/weather BarWidget.qml omarchy.weather)
+weather_panel=${weather_output#file://}
+test -f "$weather_panel"
+grep -q 'DrawerPanelHost {' "$weather_panel"
+! grep -q 'KeyboardPanel {' "$weather_panel"
+qmllint -I /usr/share/omarchy/shell "$weather_panel"
 
 mkdir "$cache_dir/unsafe-source"
 touch "$cache_dir/outside.qml"
-if adapt "$cache_dir/unsafe-source" ../outside.qml "$cache_dir/unsafe-output"; then
+if adapt "$cache_dir/unsafe-source" ../outside.qml unsafe.plugin; then
   exit 1
 fi
-test ! -e "$cache_dir/unsafe-output"
 
 mkdir "$cache_dir/symlink-source"
-ln -s "$cache_dir/symlink-source" "$cache_dir/symlink-output"
-if adapt /usr/share/omarchy/shell/plugins/panels/bluetooth Panel.qml "$cache_dir/symlink-output"; then
+ln -s /usr/share/omarchy/shell/plugins/panels/bluetooth/Panel.qml "$cache_dir/symlink-source/Panel.qml"
+if adapt "$cache_dir/symlink-source" Panel.qml symlink.plugin; then
   exit 1
 fi

@@ -5,16 +5,20 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "DrawerModel.js" as DrawerModel
 
 Item {
   id: root
 
   property QtObject bar: null
+  property Item anchorItem: null
   property var settings: ({})
   property string edge: "left"
   property string layoutMode: "overlay"
   property var popoutOwner: null
   property bool opened: false
+  property bool closing: false
+  property bool suppressPanelClose: false
   property bool pinned: false
   property bool editing: false
   property bool catalogOpen: false
@@ -32,16 +36,16 @@ Item {
   property var pluginItems: []
   property var adaptedUrls: ({})
   property string adaptingId: ""
-  property string adaptationFailedId: ""
-  property string adapterError: ""
+  property var adaptationErrors: ({})
+  property var panelErrors: ({})
+  property int panelEpoch: 0
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
+  readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
   readonly property color foreground: Color.popups.text
-  readonly property var anchorWidget: bar && typeof bar.findPanelWidget === "function"
-    ? bar.findPanelWidget("gshulga.drawer") : null
-  readonly property var anchorWindow: anchorWidget ? anchorWidget.QsWindow.window : null
+  readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
   readonly property var availablePlugins: discoverAvailablePlugins()
@@ -61,60 +65,24 @@ Item {
   }
 
   function normalizeItems(items) {
-    var normalized = []
-    var seen = ({})
-    for (var i = 0; i < (items || []).length; i++) {
-      var item = items[i]
-      var id = item ? resolvedPluginId(item) : ""
-      if (id === "" || id === "gshulga.drawer" || seen[id]) continue
-      seen[id] = true
-      normalized.push({
-        id: id,
-        label: String(item.label || ""),
-        icon: String(item.icon || ""),
-        height: Number(item.height) || 0
-      })
-    }
-    return normalized
+    return DrawerModel.normalize(items, function(item) { return root.resolvedPluginId(item) })
   }
 
   function itemsFromSettings() {
-    var configured = setting("plugins", null)
-    if (Array.isArray(configured)) return normalizeItems(configured)
-
-    // Preserve users' early page configuration when it is first edited under
-    // the new single-list layout.
-    var legacyPages = setting("pages", [])
-    if (Array.isArray(legacyPages) && legacyPages.length > 0) {
-      var flattened = []
-      for (var i = 0; i < legacyPages.length; i++) {
-        var page = legacyPages[i]
-        if (page && Array.isArray(page.items)) flattened = flattened.concat(page.items)
-      }
-      return normalizeItems(flattened)
-    }
-    return defaultPluginItems()
+    return DrawerModel.itemsFromSettings(settings, defaultPluginItems(), function(item) {
+      return root.resolvedPluginId(item)
+    })
   }
 
   function copyItems(items) {
-    var copy = []
-    for (var i = 0; i < items.length; i++) {
-      copy.push({
-        id: items[i].id,
-        label: items[i].label,
-        icon: items[i].icon,
-        height: items[i].height
-      })
-    }
-    return copy
+    return DrawerModel.copy(items)
   }
 
   function persistItems(items) {
     var nextItems = normalizeItems(items)
+    deactivateActivePanels()
     pluginItems = nextItems
-    var entry = ({ id: "gshulga.drawer" })
-    for (var key in settings) if (key !== "id" && key !== "pages") entry[key] = settings[key]
-    entry.plugins = copyItems(nextItems)
+    var entry = DrawerModel.persistedEntry(settings, nextItems)
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
       bar.shell.updateEntryInline("gshulga.drawer", entry)
   }
@@ -144,11 +112,14 @@ Item {
 
   function setEditing(value) {
     if (editing === value) return
+    cancelDrag()
+    cancelResize()
     deactivateActivePanels()
     editing = value
     resizingId = ""
     expandedId = ""
     catalogOpen = false
+    panelEpoch += 1
   }
 
   function panelHeight(item) {
@@ -168,7 +139,9 @@ Item {
   function updateResize(y) {
     if (resizingId === "") return
     var height = resizeStartHeight + y - resizeStartY
-    resizePreviewHeight = Math.round(Math.max(Style.space(160), Math.min(Style.space(520), height)) / 5) * 5
+    resizePreviewHeight = DrawerModel.resizeHeight(
+      resizeStartHeight, resizeStartY, y, Style.space(160), Style.space(520), 5
+    )
   }
 
   function finishResize() {
@@ -179,6 +152,11 @@ Item {
       persistItems(next)
     }
     resizingId = ""
+  }
+
+  function cancelResize() {
+    resizingId = ""
+    resizePreviewHeight = 0
   }
 
   function removePlugin(id) {
@@ -207,6 +185,12 @@ Item {
     draggedId = ""
   }
 
+  function cancelDrag() {
+    draggedId = ""
+    dragWidth = 0
+    clearDropTarget()
+  }
+
   function clearDropTarget() {
     dropTargetId = ""
     dropAfter = false
@@ -214,7 +198,7 @@ Item {
 
   function updateDropTarget(x, y) {
     if (!editing || draggedId === "") return
-    var contentY = y + pluginList.contentY
+    var contentY = y
     var previousRow = null
     for (var i = 0; i < pluginItems.length; i++) {
       var row = pluginList.itemAtIndex(i)
@@ -222,7 +206,7 @@ Item {
       if (contentY < row.y + row.height / 2) {
         dropTargetId = row.pluginId
         dropAfter = false
-        dropLineY = row.y - pluginList.contentY
+        dropLineY = row.y
         return
       }
       previousRow = row
@@ -230,7 +214,7 @@ Item {
     if (!previousRow) return
     dropTargetId = previousRow.pluginId
     dropAfter = true
-    dropLineY = previousRow.y + previousRow.height - pluginList.contentY
+    dropLineY = previousRow.y + previousRow.height
   }
 
   function moveItem(sourceId, targetId, after) {
@@ -238,16 +222,12 @@ Item {
     var sourceIndex = itemIndex(sourceId)
     var targetIndex = itemIndex(targetId)
     if (sourceIndex < 0 || targetIndex < 0) return
-    var next = copyItems(pluginItems)
-    var item = next.splice(sourceIndex, 1)[0]
-    targetIndex = next.map(function(value) { return value.id }).indexOf(targetId)
-    next.splice(after ? targetIndex + 1 : targetIndex, 0, item)
-    persistItems(next)
+    persistItems(DrawerModel.move(pluginItems, sourceId, targetId, after))
   }
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || itemIndex(id) >= 0 || id === "gshulga.drawer") return
+    if (id === "" || itemIndex(id) >= 0 || id === "gshulga.drawer" || !pluginEnabled({ id: id })) return
     var manifest = pluginFor(id)
     var next = copyItems(pluginItems)
     next.push({
@@ -265,6 +245,11 @@ Item {
     var registry = bar.shell.pluginRegistry
     var resolved = typeof registry.resolveEnabledId === "function" ? registry.resolveEnabledId(id) : id
     return registry.installedPlugins ? registry.installedPlugins[resolved] : null
+  }
+
+  function pluginEnabled(item) {
+    if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return false
+    return bar.shell.pluginRegistry.isEnabled(resolvedPluginId(item))
   }
 
   function resolvedPluginId(item) {
@@ -311,6 +296,7 @@ Item {
 
   function drawerPageUrl(item) {
     if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return ""
+    if (!pluginEnabled(item)) return ""
     var registry = bar.shell.pluginRegistry
     var manifest = pluginFor(item.id)
     if (!manifest || !manifest.entryPoints || !manifest.entryPoints.drawerPage) return ""
@@ -324,90 +310,217 @@ Item {
 
   function panelUrl(item) { return drawerPageUrl(item) || adaptedUrl(item) }
 
-  function canAdapt(item) {
-    var manifest = item ? pluginFor(item.id) : null
-    return !!(manifest && manifest.entryPoints && manifest.entryPoints.barWidget && manifest.__sourceDir)
+  function panelSource(item) {
+    var url = panelUrl(item)
+    if (url === "") return ""
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "drawerEpoch=" + panelEpoch
   }
 
-  function cacheName(id) { return encodeURIComponent(String(id || "")) }
+  function panelError(item) {
+    return String(panelErrors[resolvedPluginId(item)] || "The embedded page could not be loaded.")
+  }
+
+  function panelLoadFailed(item) {
+    return panelErrors[resolvedPluginId(item)] !== undefined
+  }
+
+  function setPanelError(item, message) {
+    var next = ({})
+    for (var key in panelErrors) next[key] = panelErrors[key]
+    next[resolvedPluginId(item)] = String(message || "The embedded page could not be loaded.")
+    panelErrors = next
+  }
+
+  function clearPanelError(item) {
+    var id = resolvedPluginId(item)
+    if (panelErrors[id] === undefined) return
+    var next = ({})
+    for (var key in panelErrors) if (key !== id) next[key] = panelErrors[key]
+    panelErrors = next
+  }
+
+  function canAdapt(item) {
+    var manifest = item ? pluginFor(item.id) : null
+    return !!(pluginEnabled(item) && manifest && manifest.entryPoints
+      && manifest.entryPoints.barWidget && manifest.__sourceDir)
+  }
 
   function adaptStandardPanel(item) {
     if (!item || !canAdapt(item) || adaptingId !== "") return
-    var manifest = pluginFor(item.id)
     var id = resolvedPluginId(item)
+    if (item.embedding !== "standard") {
+      var nextItems = copyItems(pluginItems)
+      var index = itemIndex(id)
+      if (index >= 0) {
+        nextItems[index].embedding = "standard"
+        persistItems(nextItems)
+        item = itemFor(id)
+      }
+    }
+    var manifest = pluginFor(item.id)
     adaptingId = id
-    adaptationFailedId = ""
-    adapterError = ""
+    clearAdaptationError(id)
     adapter.command = [
       "bash",
       pluginDir + "bin/omarchy-drawer-adapt",
       String(manifest.__sourceDir),
       String(manifest.entryPoints.barWidget),
-      cacheRoot + "/" + cacheName(id),
+      cacheRoot,
+      id,
       pluginDir
     ]
     adapter.running = true
   }
 
-  function adaptationFailed(item) { return resolvedPluginId(item) === adaptationFailedId }
+  function adaptPreferredPanels() {
+    if (!opened || adaptingId !== "") return
+    for (var i = 0; i < pluginItems.length; i++) {
+      var item = pluginItems[i]
+      if (item.embedding === "standard" && adaptedUrl(item) === "" && canAdapt(item) && !adaptationFailed(item)) {
+        adaptStandardPanel(item)
+        return
+      }
+    }
+  }
+
+  function adaptationFailed(item) { return adaptationErrors[resolvedPluginId(item)] !== undefined }
+
+  function adaptationError(item) {
+    return String(adaptationErrors[resolvedPluginId(item)] || "")
+  }
+
+  function setAdaptationError(id, message) {
+    var next = ({})
+    for (var key in adaptationErrors) next[key] = adaptationErrors[key]
+    next[id] = String(message || "This plugin does not expose a standard Omarchy panel.")
+    adaptationErrors = next
+  }
+
+  function clearAdaptationError(id) {
+    if (adaptationErrors[id] === undefined) return
+    var next = ({})
+    for (var key in adaptationErrors) if (key !== id) next[key] = adaptationErrors[key]
+    adaptationErrors = next
+  }
 
   function activateItem(item) {
     if (!item) return
+    if (panelLoadFailed(item)) {
+      launchFallback(item)
+      return
+    }
     if (panelUrl(item) !== "") return
-    if (canAdapt(item) && !adaptationFailed(item)) adaptStandardPanel(item)
+    if (canAdapt(item)) adaptStandardPanel(item)
     else launchFallback(item)
   }
 
   function injectPanel(page, item) {
     if (!page) return
-    if ("drawer" in page) page.drawer = root
-    if ("drawerHost" in page) page.drawerHost = root
-    if ("bar" in page) page.bar = root.bar
-    if ("settings" in page) page.settings = item || ({})
-    if ("pluginId" in page) page.pluginId = item ? String(item.id) : ""
-    if ("service" in page && root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
-      page.service = root.bar.shell.serviceFor(root.resolvedPluginId(item))
+    var id = root.resolvedPluginId(item)
+    var context = {
+      drawer: root,
+      drawerItem: item || ({}),
+      bar: root.bar,
+      pluginId: id,
+      settings: root.nativeSettings(id),
+      service: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
+        ? root.bar.shell.serviceFor(id) : null
+    }
+    if (typeof page.initializeDrawer === "function") {
+      page.initializeDrawer(context)
+    } else {
+      assignPanelProperty(page, "drawer", context.drawer)
+      assignPanelProperty(page, "drawerHost", context.drawer)
+      assignPanelProperty(page, "drawerItem", context.drawerItem)
+      assignPanelProperty(page, "bar", context.bar)
+      assignPanelProperty(page, "settings", context.settings)
+      assignPanelProperty(page, "pluginId", context.pluginId)
+      assignPanelProperty(page, "service", context.service)
+    }
     var nextPanels = activePanels.slice()
     if (nextPanels.indexOf(page) < 0) nextPanels.push(page)
     activePanels = nextPanels
-    if (typeof page.open === "function" && opened) page.open()
+    if (typeof page.drawerActivate === "function" && opened) page.drawerActivate(context)
+    else if (typeof page.open === "function" && opened) page.open()
   }
 
-  function deactivateActivePanels() {
-    for (var i = 0; i < activePanels.length; i++) {
-      var panel = activePanels[i]
-      if (panel && typeof panel.drawerDeactivate === "function") panel.drawerDeactivate()
+  function assignPanelProperty(page, name, value) {
+    if (!(name in page)) return
+    try {
+      page[name] = value
+    } catch (error) {
+      console.warn("Drawer: cannot inject " + name + ":", error)
     }
+  }
+
+  function nativeSettings(id) {
+    if (!bar || typeof bar.moduleWidgets !== "function") return ({})
+    var widgets = bar.moduleWidgets(id)
+    return widgets.length > 0 && widgets[0] && widgets[0].settings ? widgets[0].settings : ({})
+  }
+
+  function deactivateActivePanels(reason) {
+    var panels = activePanels.slice()
     activePanels = []
+    var previousSuppression = suppressPanelClose
+    suppressPanelClose = true
+    for (var i = 0; i < panels.length; i++) {
+      var panel = panels[i]
+      if (!panel) continue
+      if ("drawerHost" in panel && typeof panel.close === "function") panel.close()
+      else if (typeof panel.drawerDeactivate === "function") panel.drawerDeactivate(reason || "drawer")
+      else if (typeof panel.close === "function") panel.close()
+    }
+    suppressPanelClose = previousSuppression
+  }
+
+  function panelClosed(page) {
+    if (closing || suppressPanelClose || !opened) return
+    var nextPanels = []
+    for (var i = 0; i < activePanels.length; i++) {
+      if (activePanels[i] !== page) nextPanels.push(activePanels[i])
+    }
+    activePanels = nextPanels
+    close()
   }
 
   function open() { opened = true }
   function close() {
-    // Hide the host before deactivating embedded panels: their own lifecycle
-    // callbacks must not keep the Drawer surface visible.
+    if (closing || !opened) return
+    closing = true
+    deactivateActivePanels("drawer-close")
     opened = false
-    deactivateActivePanels()
+    pinned = false
     catalogOpen = false
     editing = false
     expandedId = ""
-    resizingId = ""
+    cancelResize()
+    cancelDrag()
+    closing = false
   }
   function toggle() { opened ? close() : open() }
 
   function launchFallback(item) {
-    if (!item || !bar || !bar.shell) return
-    close()
-    if (!bar.shell.summon(String(item.id)))
-      console.warn("Drawer: plugin is unavailable or disabled:", item.id)
+    if (!item || !bar || !bar.shell || !pluginEnabled(item)) {
+      setPanelError(item, "Enable this plugin in Omarchy before opening its native panel.")
+      return
+    }
+    if (bar.shell.summon(String(resolvedPluginId(item)))) close()
+    else setPanelError(item, "This plugin has no native panel that Omarchy can open.")
   }
 
-  onSettingsChanged: pluginItems = itemsFromSettings()
+  onSettingsChanged: {
+    deactivateActivePanels("settings-change")
+    pluginItems = itemsFromSettings()
+  }
   Component.onCompleted: pluginItems = itemsFromSettings()
 
   onOpenedChanged: {
-    if (!bar || !popoutOwner) return
-    if (opened) bar.requestPopout(popoutOwner)
-    else bar.releasePopout(popoutOwner)
+    if (bar && popoutOwner) {
+      if (opened) bar.requestPopout(popoutOwner)
+      else bar.releasePopout(popoutOwner)
+    }
+    if (opened) adaptPreferredPanels()
   }
 
   Process {
@@ -424,20 +537,19 @@ Item {
       var id = root.adaptingId
       root.adaptingId = ""
       if (exitCode !== 0) {
-        root.adaptationFailedId = id
-        root.adapterError = String(adapterErrors.text || "This plugin does not expose a standard Omarchy panel.").trim()
+        root.setAdaptationError(id, String(adapterErrors.text || "This plugin does not expose a standard Omarchy panel.").trim())
         return
       }
       var url = String(adapterOutput.text || "").trim()
       if (url === "") {
-        root.adaptationFailedId = id
-        root.adapterError = "The adapter produced no embedded page."
+        root.setAdaptationError(id, "The adapter produced no embedded page.")
         return
       }
       var next = ({})
       for (var key in root.adaptedUrls) next[key] = root.adaptedUrls[key]
       next[id] = url
       root.adaptedUrls = next
+      root.adaptPreferredPanels()
     }
   }
 
@@ -449,17 +561,19 @@ Item {
     exclusionMode: root.reservesSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
     WlrLayershell.namespace: "gshulga-drawer"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     anchors {
-      left: root.edge === "left"
-      right: root.edge === "right"
-      top: root.edge !== "bottom"
-      bottom: root.edge !== "top"
+      left: root.edge === "left" || !root.verticalEdge
+      right: root.edge === "right" || !root.verticalEdge
+      top: root.verticalEdge || root.edge === "top"
+      bottom: root.verticalEdge || root.edge === "bottom"
     }
 
-    implicitWidth: root.edge === "left" || root.edge === "right" ? root.drawerWidth : 0
-    implicitHeight: root.edge === "top" || root.edge === "bottom" ? root.drawerHeight : 0
+    implicitWidth: root.verticalEdge
+      ? Math.min(root.drawerWidth, screen ? screen.width : root.drawerWidth) : 0
+    implicitHeight: root.verticalEdge ? 0
+      : Math.min(root.drawerHeight, screen ? screen.height : root.drawerHeight)
 
     Shortcut {
       sequence: "Escape"
@@ -567,7 +681,10 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.pinned = !root.pinned
+                onClicked: {
+                  if (root.pinned) root.close()
+                  else root.pinned = true
+                }
               }
             }
 
@@ -584,6 +701,9 @@ Item {
             interactive: root.resizingId === "" && root.draggedId === ""
             spacing: Style.space(7)
             model: root.pluginItems
+            // Stack mode keeps every embedded panel instantiated; lifecycle is
+            // therefore independent of ListView delegate recycling.
+            cacheBuffer: contentHeight
 
             displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
@@ -688,6 +808,7 @@ Item {
                       root.beginDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
                     }
                     onReleased: root.finishDrag()
+                    onCanceled: root.cancelDrag()
                   }
                 }
 
@@ -741,23 +862,31 @@ Item {
                     anchors.fill: parent
                     anchors.margins: Style.space(10)
                     active: root.opened && pluginRow.expanded && root.panelUrl(pluginRow.plugin) !== ""
-                    source: root.panelUrl(pluginRow.plugin)
-                    onLoaded: root.injectPanel(item, pluginRow.plugin)
+                    source: root.panelSource(pluginRow.plugin)
+                    onLoaded: {
+                      root.clearPanelError(pluginRow.plugin)
+                      root.injectPanel(item, pluginRow.plugin)
+                    }
+                    onStatusChanged: {
+                      if (status === Loader.Error) root.setPanelError(pluginRow.plugin, errorString())
+                    }
                   }
 
                   Column {
                     anchors.centerIn: parent
                     width: parent.width - Style.space(36)
                     spacing: Style.space(8)
-                    visible: root.panelUrl(pluginRow.plugin) === ""
+                    visible: root.panelUrl(pluginRow.plugin) === "" || root.panelLoadFailed(pluginRow.plugin)
 
                     Text {
                       width: parent.width
-                      text: root.adaptingId === root.resolvedPluginId(pluginRow.plugin)
-                        ? "Embedding the standard Omarchy panel..."
-                        : (root.adaptationFailed(pluginRow.plugin) && root.adapterError !== ""
-                          ? root.adapterError
-                          : "Embed this panel in Drawer without changing its plugin.")
+                        text: root.panelLoadFailed(pluginRow.plugin)
+                          ? root.panelError(pluginRow.plugin)
+                          : (root.adaptingId === root.resolvedPluginId(pluginRow.plugin)
+                          ? "Embedding the standard Omarchy panel..."
+                          : (root.adaptationFailed(pluginRow.plugin) && root.adaptationError(pluginRow.plugin) !== ""
+                            ? root.adaptationError(pluginRow.plugin)
+                            : "Embed this panel in Drawer without changing its plugin."))
                       color: root.foreground
                       opacity: 0.65
                       font.family: Style.font.family
@@ -778,8 +907,9 @@ Item {
                       Text {
                         id: actionText
                         anchors.centerIn: parent
-                        text: root.canAdapt(pluginRow.plugin) && !root.adaptationFailed(pluginRow.plugin)
-                          ? "Embed in Drawer" : "Open native panel"
+                        text: root.canAdapt(pluginRow.plugin) && !root.panelLoadFailed(pluginRow.plugin)
+                          ? (root.adaptationFailed(pluginRow.plugin) ? "Retry embedding" : "Embed in Drawer")
+                          : "Open native panel"
                         color: root.foreground
                         font.family: Style.font.family
                         font.pixelSize: Style.font.bodySmall
@@ -823,6 +953,7 @@ Item {
                       root.updateResize(point.y)
                     }
                     onReleased: root.finishResize()
+                    onCanceled: root.cancelResize()
                   }
                 }
               }
@@ -1044,6 +1175,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                enabled: modelData.enabled
                 onClicked: root.addPlugin(String(modelData.id))
               }
             }
