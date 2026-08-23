@@ -18,7 +18,8 @@
     "defaultSection": "left",
     "allowMultiple": false,
     "defaults": {
-      "edge": "left"
+      "edge": "left",
+      "layoutMode": "overlay"
     },
     "schema": [
       {
@@ -28,6 +29,14 @@
         "description": "The screen edge from which the drawer opens.",
         "options": ["left", "right", "top", "bottom"],
         "defaultValue": "left"
+      },
+      {
+        "key": "layoutMode",
+        "type": "enum",
+        "label": "Drawer layout",
+        "description": "Overlay windows or reserve screen space while Drawer is open.",
+        "options": ["overlay", "reserve"],
+        "defaultValue": "overlay"
       }
     ]
   }

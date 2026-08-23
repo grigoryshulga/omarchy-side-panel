@@ -12,8 +12,10 @@ Item {
   property QtObject bar: null
   property var settings: ({})
   property string edge: "left"
+  property string layoutMode: "overlay"
   property var popoutOwner: null
   property bool opened: false
+  property bool pinned: false
   property bool catalogOpen: false
   property string expandedId: ""
   property string menuId: ""
@@ -30,6 +32,7 @@ Item {
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
+  readonly property bool reservesSpace: layoutMode === "reserve"
   readonly property color foreground: Color.popups.text
   readonly property var anchorWidget: bar && typeof bar.findPanelWidget === "function"
     ? bar.findPanelWidget("gshulga.drawer") : null
@@ -390,7 +393,7 @@ Item {
     screen: root.anchorWindow ? root.anchorWindow.screen : null
     visible: root.opened
     color: "transparent"
-    exclusionMode: ExclusionMode.Ignore
+    exclusionMode: root.reservesSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
     WlrLayershell.namespace: "gshulga-drawer"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -433,6 +436,8 @@ Item {
             Text {
               id: title
               anchors.left: parent.left
+              anchors.right: pinButton.left
+              anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: "PLUGINS"
               color: root.foreground
@@ -440,6 +445,39 @@ Item {
               font.pixelSize: Style.font.title
               font.bold: true
               font.letterSpacing: 1.1
+              elide: Text.ElideRight
+            }
+
+            Rectangle {
+              id: pinButton
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: pinText.implicitWidth + Style.space(16)
+              height: Math.round(Style.space(28))
+              radius: height / 2
+              color: root.pinned
+                ? Style.selectedFillFor(root.foreground, Color.accent)
+                : (pinHover.containsMouse
+                  ? Style.hoverFillFor(root.foreground, Color.accent)
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06))
+
+              Text {
+                id: pinText
+                anchors.centerIn: parent
+                text: root.pinned ? "UNPIN" : "PIN"
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              MouseArea {
+                id: pinHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.pinned = !root.pinned
+              }
             }
 
           }

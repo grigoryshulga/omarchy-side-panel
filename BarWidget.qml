@@ -15,6 +15,10 @@ BarWidget {
     var value = String(setting("edge", "left")).toLowerCase()
     return ["left", "right", "top", "bottom"].indexOf(value) >= 0 ? value : "left"
   }
+  readonly property string layoutMode: {
+    var value = String(setting("layoutMode", "overlay")).toLowerCase()
+    return ["overlay", "reserve"].indexOf(value) >= 0 ? value : "overlay"
+  }
   readonly property bool opened: drawer.opened
   property bool popoutSwitchClosing: false
 
@@ -22,6 +26,7 @@ BarWidget {
   function close() { drawer.close() }
   function togglePanel() { drawer.toggle() }
   function closeForPopoutSwitch() {
+    if (drawer.pinned) return
     popoutSwitchClosing = true
     drawer.close()
     Qt.callLater(function() { popoutSwitchClosing = false })
@@ -35,6 +40,7 @@ BarWidget {
     bar: root.bar
     settings: root.settings
     edge: root.edge
+    layoutMode: root.layoutMode
     popoutOwner: root
   }
 

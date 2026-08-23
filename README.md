@@ -58,6 +58,12 @@ is kept as plain data in the Drawer layout entry in
 }
 ```
 
+`Drawer layout` controls how the compositor treats the open drawer:
+
+- `overlay`: Drawer floats over existing windows.
+- `reserve`: Drawer reserves its edge width or height, so Hyprland lays out
+  normal windows in the remaining screen area.
+
 When `plugins` is omitted, Drawer starts with a small local default list.
 Existing `pages` configuration is flattened into the list the first time its
 order or membership is changed.
@@ -65,6 +71,8 @@ order or membership is changed.
 ## Plugin List
 
 - Click a plugin header to expand or collapse its embedded panel.
+- Click `PIN` to keep Drawer open when another bar popout is activated. Click
+  `UNPIN` or the Drawer bar icon to close it.
 - Click `...` to set the expanded panel height or remove the plugin from Drawer.
 - Hold `...`, then drag the preview onto a plugin header to reorder the list.
 - Click `+` to see every installed Omarchy plugin not already in the list, then
