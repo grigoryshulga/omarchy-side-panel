@@ -1,12 +1,10 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
-import qs.Ui
 
 Item {
   id: root
@@ -16,60 +14,141 @@ Item {
   property string edge: "left"
   property var popoutOwner: null
   property bool opened: false
-  property int selectedPage: 0
-  property int selectedItem: 0
+  property bool catalogOpen: false
+  property string expandedId: ""
+  property string draggedId: ""
+  property var activePanel: null
+  property var pluginItems: []
   property var adaptedUrls: ({})
   property string adaptingId: ""
   property string adaptationFailedId: ""
   property string adapterError: ""
-  readonly property int drawerWidth: Math.round(Style.space(420))
-  readonly property int drawerHeight: Math.round(Style.space(330))
+
+  readonly property int drawerWidth: Math.round(Style.space(480))
+  readonly property int drawerHeight: Math.round(Style.space(420))
   readonly property color foreground: Color.popups.text
   readonly property var anchorWidget: bar && typeof bar.findPanelWidget === "function"
     ? bar.findPanelWidget("gshulga.drawer") : null
   readonly property var anchorWindow: anchorWidget ? anchorWidget.QsWindow.window : null
-  readonly property var pages: configuredPages()
-  readonly property var currentPage: pages.length > 0
-    ? pages[Math.max(0, Math.min(selectedPage, pages.length - 1))] : null
-  readonly property var currentItem: currentPage && Array.isArray(currentPage.items)
-    && currentPage.items.length > 0
-    ? currentPage.items[Math.max(0, Math.min(selectedItem, currentPage.items.length - 1))] : null
-  readonly property string currentExplicitUrl: drawerPageUrl(currentItem)
-  readonly property string currentAdaptedUrl: adaptedUrl(currentItem)
-  readonly property string currentPageUrl: currentExplicitUrl || currentAdaptedUrl
-  readonly property bool embedding: currentPageUrl !== ""
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
+  readonly property var availablePlugins: discoverAvailablePlugins()
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
     return value === undefined || value === null ? fallback : value
   }
 
-  function configuredPages() {
-    var configured = setting("pages", [])
-    if (!Array.isArray(configured) || configured.length === 0) {
-      return [{
-        title: "Plugins",
-        items: [
-          { id: "io.github.sotoaugusto.ticktick", label: "TickTick", icon: "\uf0ae" },
-          { id: "gshulga.jira", label: "Jira", icon: "\ue75c" },
-          { id: "omarchy.bluetooth", label: "Bluetooth", icon: "\uf293" },
-          { id: "b.everything", label: "Everything", icon: "\uf002" }
-        ]
-      }]
-    }
+  function defaultPluginItems() {
+    return [
+      { id: "io.github.sotoaugusto.ticktick", label: "TickTick", icon: "\uf0ae" },
+      { id: "gshulga.jira", label: "Jira", icon: "\ue75c" },
+      { id: "omarchy.bluetooth", label: "Bluetooth", icon: "\uf293" },
+      { id: "b.everything", label: "Everything", icon: "\uf002" }
+    ]
+  }
 
-    var valid = []
-    for (var i = 0; i < configured.length; i++) {
-      var page = configured[i]
-      if (!page || !Array.isArray(page.items)) continue
-      valid.push({
-        title: String(page.title || "Plugins"),
-        items: page.items.filter(function(item) { return item && String(item.id || "") !== "" })
+  function normalizeItems(items) {
+    var normalized = []
+    var seen = ({})
+    for (var i = 0; i < (items || []).length; i++) {
+      var item = items[i]
+      var id = item ? resolvedPluginId(item) : ""
+      if (id === "" || id === "gshulga.drawer" || seen[id]) continue
+      seen[id] = true
+      normalized.push({
+        id: id,
+        label: String(item.label || ""),
+        icon: String(item.icon || "")
       })
     }
-    return valid
+    return normalized
+  }
+
+  function itemsFromSettings() {
+    var configured = setting("plugins", null)
+    if (Array.isArray(configured)) return normalizeItems(configured)
+
+    // Preserve users' early page configuration when it is first edited under
+    // the new single-list layout.
+    var legacyPages = setting("pages", [])
+    if (Array.isArray(legacyPages) && legacyPages.length > 0) {
+      var flattened = []
+      for (var i = 0; i < legacyPages.length; i++) {
+        var page = legacyPages[i]
+        if (page && Array.isArray(page.items)) flattened = flattened.concat(page.items)
+      }
+      return normalizeItems(flattened)
+    }
+    return defaultPluginItems()
+  }
+
+  function copyItems(items) {
+    var copy = []
+    for (var i = 0; i < items.length; i++) {
+      copy.push({ id: items[i].id, label: items[i].label, icon: items[i].icon })
+    }
+    return copy
+  }
+
+  function persistItems(items) {
+    var nextItems = normalizeItems(items)
+    pluginItems = nextItems
+    var entry = ({ id: "gshulga.drawer" })
+    for (var key in settings) if (key !== "id" && key !== "pages") entry[key] = settings[key]
+    entry.plugins = copyItems(nextItems)
+    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+      bar.shell.updateEntryInline("gshulga.drawer", entry)
+  }
+
+  function itemFor(id) {
+    for (var i = 0; i < pluginItems.length; i++)
+      if (pluginItems[i].id === id) return pluginItems[i]
+    return null
+  }
+
+  function itemIndex(id) {
+    var wanted = resolvedPluginId({ id: id })
+    for (var i = 0; i < pluginItems.length; i++)
+      if (resolvedPluginId(pluginItems[i]) === wanted) return i
+    return -1
+  }
+
+  function setExpanded(id) {
+    if (expandedId === id) {
+      deactivateActivePanel()
+      expandedId = ""
+      return
+    }
+    deactivateActivePanel()
+    expandedId = id
+  }
+
+  function moveItem(sourceId, targetId, after) {
+    if (sourceId === "" || sourceId === targetId) return
+    var sourceIndex = itemIndex(sourceId)
+    var targetIndex = itemIndex(targetId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    var next = copyItems(pluginItems)
+    var item = next.splice(sourceIndex, 1)[0]
+    targetIndex = next.map(function(value) { return value.id }).indexOf(targetId)
+    next.splice(after ? targetIndex + 1 : targetIndex, 0, item)
+    persistItems(next)
+  }
+
+  function addPlugin(id) {
+    id = resolvedPluginId({ id: id })
+    if (id === "" || itemIndex(id) >= 0 || id === "gshulga.drawer") return
+    var manifest = pluginFor(id)
+    var next = copyItems(pluginItems)
+    next.push({
+      id: id,
+      label: manifest ? String(manifest.name || id) : id,
+      icon: ""
+    })
+    persistItems(next)
+    catalogOpen = false
+    setExpanded(id)
   }
 
   function pluginFor(id) {
@@ -80,10 +159,45 @@ Item {
   }
 
   function resolvedPluginId(item) {
-    if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return ""
+    if (!item) return ""
+    var id = String(item.id || "")
+    if (id === "" || !bar || !bar.shell || !bar.shell.pluginRegistry) return id
     var registry = bar.shell.pluginRegistry
     return typeof registry.resolveEnabledId === "function"
-      ? registry.resolveEnabledId(String(item.id)) : String(item.id)
+      ? registry.resolveEnabledId(id) : id
+  }
+
+  function pluginLabel(item) {
+    if (!item) return ""
+    if (String(item.label || "") !== "") return String(item.label)
+    var manifest = pluginFor(item.id)
+    return manifest ? String(manifest.name || item.id) : String(item.id)
+  }
+
+  function pluginIcon(item) {
+    return item && String(item.icon || "") !== "" ? String(item.icon) : "\uf0c9"
+  }
+
+  function discoverAvailablePlugins() {
+    if (!bar || !bar.shell || !bar.shell.pluginRegistry) return []
+    var plugins = bar.shell.pluginRegistry.installedPlugins || ({})
+    var entries = []
+    var seen = ({})
+    for (var id in plugins) {
+      var resolvedId = resolvedPluginId({ id: id })
+      if (resolvedId === "gshulga.drawer" || itemIndex(resolvedId) >= 0 || seen[resolvedId]) continue
+      seen[resolvedId] = true
+      var manifest = pluginFor(resolvedId)
+      if (!manifest) continue
+      entries.push({
+        id: resolvedId,
+        label: String(manifest.name || resolvedId),
+        description: String(manifest.description || ""),
+        enabled: bar.shell.pluginRegistry.isEnabled(resolvedId)
+      })
+    }
+    entries.sort(function(a, b) { return a.label.localeCompare(b.label) })
+    return entries
   }
 
   function drawerPageUrl(item) {
@@ -99,14 +213,14 @@ Item {
     return String(adaptedUrls[resolvedPluginId(item)] || "")
   }
 
+  function panelUrl(item) { return drawerPageUrl(item) || adaptedUrl(item) }
+
   function canAdapt(item) {
     var manifest = item ? pluginFor(item.id) : null
     return !!(manifest && manifest.entryPoints && manifest.entryPoints.barWidget && manifest.__sourceDir)
   }
 
-  function cacheName(id) {
-    return encodeURIComponent(String(id || ""))
-  }
+  function cacheName(id) { return encodeURIComponent(String(id || "")) }
 
   function adaptStandardPanel(item) {
     if (!item || !canAdapt(item) || adaptingId !== "") return
@@ -126,28 +240,38 @@ Item {
     adapter.running = true
   }
 
-  function isEmbedded(item) { return drawerPageUrl(item) !== "" || adaptedUrl(item) !== "" }
   function adaptationFailed(item) { return resolvedPluginId(item) === adaptationFailedId }
 
-  function selectPage(index) {
-    if (index < 0 || index >= pages.length) return
-    selectedPage = index
-    selectedItem = 0
+  function activateItem(item) {
+    if (!item) return
+    if (panelUrl(item) !== "") return
+    if (canAdapt(item) && !adaptationFailed(item)) adaptStandardPanel(item)
+    else launchFallback(item)
   }
 
-  function selectItem(index) {
-    if (!currentPage || !Array.isArray(currentPage.items)) return
-    if (index < 0 || index >= currentPage.items.length) return
-    selectedItem = index
+  function injectPanel(page, item) {
+    if (!page) return
+    if ("drawer" in page) page.drawer = root
+    if ("drawerHost" in page) page.drawerHost = root
+    if ("bar" in page) page.bar = root.bar
+    if ("settings" in page) page.settings = item || ({})
+    if ("pluginId" in page) page.pluginId = item ? String(item.id) : ""
+    if ("service" in page && root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
+      page.service = root.bar.shell.serviceFor(root.resolvedPluginId(item))
+    activePanel = page
+    if (typeof page.open === "function" && opened) page.open()
+  }
+
+  function deactivateActivePanel() {
+    if (activePanel && typeof activePanel.drawerDeactivate === "function")
+      activePanel.drawerDeactivate()
+    activePanel = null
   }
 
   function open() { opened = true }
-  function deactivatePage() {
-    if (pageLoader.item && typeof pageLoader.item.drawerDeactivate === "function")
-      pageLoader.item.drawerDeactivate()
-  }
   function close() {
-    deactivatePage()
+    deactivateActivePanel()
+    catalogOpen = false
     opened = false
   }
   function toggle() { opened ? close() : open() }
@@ -159,37 +283,14 @@ Item {
       console.warn("Drawer: plugin is unavailable or disabled:", item.id)
   }
 
-  function activateItem(item) {
-    if (!item) return
-    if (isEmbedded(item)) return
-    if (canAdapt(item) && !adaptationFailed(item)) adaptStandardPanel(item)
-    else launchFallback(item)
-  }
-
-  function injectPage(item) {
-    var page = pageLoader.item
-    if (!page) return
-    if ("drawer" in page) page.drawer = root
-    if ("drawerHost" in page) page.drawerHost = root
-    if ("bar" in page) page.bar = root.bar
-    if ("settings" in page) page.settings = item || ({})
-    if ("pluginId" in page) page.pluginId = item ? String(item.id) : ""
-    if ("service" in page && root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
-      page.service = root.bar.shell.serviceFor(root.resolvedPluginId(item))
-    if (typeof page.open === "function" && opened) page.open()
-  }
+  onSettingsChanged: pluginItems = itemsFromSettings()
+  Component.onCompleted: pluginItems = itemsFromSettings()
 
   onOpenedChanged: {
     if (!bar || !popoutOwner) return
     if (opened) bar.requestPopout(popoutOwner)
     else bar.releasePopout(popoutOwner)
   }
-
-  onPagesChanged: {
-    if (selectedPage >= pages.length) selectedPage = Math.max(0, pages.length - 1)
-    if (currentPage && selectedItem >= currentPage.items.length) selectedItem = 0
-  }
-  onCurrentItemChanged: Qt.callLater(function() { root.injectPage(root.currentItem) })
 
   Process {
     id: adapter
@@ -252,199 +353,432 @@ Item {
         id: keyCatcher
         anchors.fill: parent
         focus: root.opened
-
-        Keys.onEscapePressed: root.close()
-        Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Left && root.pages.length > 1) {
-            root.selectPage(Math.max(0, root.selectedPage - 1))
-            event.accepted = true
-          } else if (event.key === Qt.Key_Right && root.pages.length > 1) {
-            root.selectPage(Math.min(root.pages.length - 1, root.selectedPage + 1))
-            event.accepted = true
-          } else if (event.key === Qt.Key_Up) {
-            root.selectItem(Math.max(0, root.selectedItem - 1))
-            event.accepted = true
-          } else if (event.key === Qt.Key_Down && root.currentPage) {
-            root.selectItem(Math.min(root.currentPage.items.length - 1, root.selectedItem + 1))
-            event.accepted = true
-          } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.currentItem) {
-            root.activateItem(root.currentItem)
-            event.accepted = true
-          }
+        Keys.onEscapePressed: {
+          if (root.catalogOpen) root.catalogOpen = false
+          else root.close()
         }
 
-        Row {
+        Item {
           anchors.fill: parent
-          spacing: 0
+          anchors.margins: Style.space(14)
 
-          Rectangle {
-            width: Style.space(122)
-            height: parent.height
-            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035)
+          Item {
+            id: titleRow
+            anchors.top: parent.top
+            width: parent.width
+            height: title.implicitHeight
 
-            Column {
-              anchors.fill: parent
-              anchors.margins: Style.space(12)
-              spacing: Style.space(5)
+            Text {
+              id: title
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "PLUGINS"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+              font.letterSpacing: 1.1
+            }
 
-              Text {
-                text: "DRAWER"
-                color: root.foreground
-                opacity: 0.62
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                font.letterSpacing: 1.3
-              }
+          }
 
-              Repeater {
-                model: root.pages
+          ListView {
+            id: pluginList
+            anchors.top: titleRow.bottom
+            anchors.topMargin: Style.space(10)
+            anchors.bottom: addButton.top
+            anchors.bottomMargin: Style.space(10)
+            width: parent.width
+            clip: true
+            spacing: Style.space(7)
+            model: root.pluginItems
 
-                delegate: Button {
-                  required property int index
-                  required property var modelData
-                  width: parent.width
-                  text: String(modelData.title || "Plugins")
-                  foreground: root.foreground
-                  bordered: false
-                  onClicked: root.selectPage(index)
-                  opacity: root.selectedPage === index ? 1 : 0.62
+            displaced: Transition {
+              NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
+            }
+
+            delegate: Item {
+              id: pluginRow
+              required property int index
+              required property var modelData
+              readonly property string pluginId: String(modelData.id)
+              readonly property bool expanded: root.expandedId === pluginId
+              readonly property var plugin: modelData
+              width: pluginList.width
+              height: header.height + (expanded ? content.height : 0)
+              z: dragArea.drag.active ? 2 : 1
+
+              DropArea {
+                anchors.fill: parent
+                keys: ["omarchy-drawer-plugin"]
+                onDropped: function(drop) {
+                  root.moveItem(root.draggedId, pluginRow.pluginId, drop.position.y > pluginRow.height / 2)
+                  drop.accepted = true
                 }
               }
 
-              Item { width: 1; height: 1 }
-
-              Button {
+              Rectangle {
+                id: header
                 width: parent.width
-                text: "Close"
-                foreground: root.foreground
-                bordered: false
-                onClicked: root.close()
-              }
-            }
-          }
-
-          Item {
-            width: parent.width - Style.space(122)
-            height: parent.height
-
-            Column {
-              id: body
-              anchors.fill: parent
-              anchors.margins: Style.space(16)
-              spacing: Style.space(12)
-
-              Row {
-                width: parent.width
-                spacing: Style.space(8)
+                height: Math.round(Style.space(42))
+                radius: Style.cornerRadius / 2
+                color: pluginRow.expanded
+                  ? Style.selectedFillFor(root.foreground, Color.accent)
+                  : (headerHover.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035))
+                border.width: 1
+                border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, pluginRow.expanded ? 0.22 : 0.09)
 
                 Text {
-                  width: parent.width - closeButton.width - parent.spacing
-                  text: root.currentPage ? String(root.currentPage.title || "Plugins") : "No pages"
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(12)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.pluginIcon(pluginRow.plugin)
                   color: root.foreground
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.title
-                  font.bold: true
+                  font.pixelSize: Style.font.icon
+                }
+
+                Text {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(42)
+                  anchors.right: dragHandle.left
+                  anchors.rightMargin: Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.pluginLabel(pluginRow.plugin)
+                  color: root.foreground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.body
+                  font.bold: pluginRow.expanded
                   elide: Text.ElideRight
                 }
 
-                Button {
-                  id: closeButton
-                  text: "×"
-                  foreground: root.foreground
-                  onClicked: root.close()
+                Text {
+                  anchors.right: dragHandle.left
+                  anchors.rightMargin: Style.space(7)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: pluginRow.expanded ? "-" : "+"
+                  color: root.foreground
+                  opacity: 0.62
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.subtitle
+                }
+
+                MouseArea {
+                  id: headerHover
+                  anchors.left: parent.left
+                  anchors.right: dragHandle.left
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.setExpanded(pluginRow.pluginId)
+                }
+
+                Item {
+                  id: dragHandle
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.round(Style.space(30))
+                  height: width
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "::"
+                    color: root.foreground
+                    opacity: 0.5
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  MouseArea {
+                    id: dragArea
+                    anchors.fill: parent
+                    cursorShape: Qt.DragMoveCursor
+                    drag.target: pluginRow
+                    onPressed: root.draggedId = pluginRow.pluginId
+                    onReleased: {
+                      pluginRow.Drag.drop()
+                      pluginRow.x = 0
+                      pluginRow.y = 0
+                      root.draggedId = ""
+                    }
+                  }
+
                 }
               }
 
-              Row {
+              Drag.active: dragArea.drag.active
+              Drag.keys: ["omarchy-drawer-plugin"]
+              Drag.hotSpot.x: width / 2
+              Drag.hotSpot.y: height / 2
+
+              Item {
+                id: content
+                anchors.top: header.bottom
                 width: parent.width
-                height: parent.height - Style.space(52)
-                spacing: Style.space(12)
-
-                ListView {
-                  id: pluginList
-                  width: Style.space(136)
-                  height: parent.height
-                  clip: true
-                  model: root.currentPage ? root.currentPage.items : []
-                  currentIndex: root.selectedItem
-                  spacing: Style.space(4)
-                  onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
-
-                  delegate: Button {
-                    required property int index
-                    required property var modelData
-                    width: pluginList.width
-                    text: (String(modelData.icon || "\uf0c9") + "  " + String(modelData.label || modelData.id))
-                    foreground: root.foreground
-                    bordered: false
-                    opacity: root.selectedItem === index ? 1 : 0.62
-                    onClicked: {
-                      root.selectItem(index)
-                      root.activateItem(modelData)
-                    }
-                  }
-                }
+                height: pluginRow.expanded
+                  ? Math.max(Style.space(150), Math.min(Style.space(420), surface.height - Style.space(110)))
+                  : 0
+                clip: true
 
                 Rectangle {
-                  width: parent.width - pluginList.width - parent.spacing
-                  height: parent.height
+                  anchors.fill: parent
+                  anchors.topMargin: Style.space(5)
                   radius: Style.cornerRadius / 2
-                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035)
+                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
                   border.width: 1
-                  border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+                  border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
 
                   Loader {
                     id: pageLoader
                     anchors.fill: parent
-                    anchors.margins: Style.space(12)
-                    active: root.opened && root.embedding
-                    source: root.currentPageUrl
-                    onLoaded: root.injectPage(root.currentItem)
+                    anchors.margins: Style.space(10)
+                    active: root.opened && pluginRow.expanded && root.panelUrl(pluginRow.plugin) !== ""
+                    source: root.panelUrl(pluginRow.plugin)
+                    onLoaded: root.injectPanel(item, pluginRow.plugin)
                   }
 
                   Column {
                     anchors.centerIn: parent
                     width: parent.width - Style.space(36)
                     spacing: Style.space(8)
-                    visible: !root.embedding
+                    visible: root.panelUrl(pluginRow.plugin) === ""
 
                     Text {
                       width: parent.width
-                      text: root.currentItem ? String(root.currentItem.label || root.currentItem.id) : "No plugin selected"
-                      color: root.foreground
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.subtitle
-                      horizontalAlignment: Text.AlignHCenter
-                      elide: Text.ElideRight
-                    }
-
-                    Text {
-                      width: parent.width
-                      text: root.adaptingId === root.resolvedPluginId(root.currentItem)
-                        ? "Embedding the standard Omarchy panel…"
-                        : (root.adaptationFailed(root.currentItem) && root.adapterError !== ""
+                      text: root.adaptingId === root.resolvedPluginId(pluginRow.plugin)
+                        ? "Embedding the standard Omarchy panel..."
+                        : (root.adaptationFailed(pluginRow.plugin) && root.adapterError !== ""
                           ? root.adapterError
-                          : "Embed the standard Omarchy panel without modifying its plugin.")
+                          : "Embed this panel in Drawer without changing its plugin.")
                       color: root.foreground
-                      opacity: 0.64
+                      opacity: 0.65
                       font.family: Style.font.family
                       font.pixelSize: Style.font.bodySmall
                       horizontalAlignment: Text.AlignHCenter
                       wrapMode: Text.WordWrap
                     }
 
-                    Button {
+                    Rectangle {
                       anchors.horizontalCenter: parent.horizontalCenter
-                      text: root.canAdapt(root.currentItem) && !root.adaptationFailed(root.currentItem)
-                        ? "Embed in Drawer" : "Open native panel"
-                      foreground: root.foreground
-                      enabled: root.adaptingId === ""
-                      onClicked: root.activateItem(root.currentItem)
+                      width: actionText.implicitWidth + Style.space(20)
+                      height: actionText.implicitHeight + Style.space(12)
+                      radius: Style.cornerRadius / 2
+                      color: actionHover.containsMouse
+                        ? Style.hoverFillFor(root.foreground, Color.accent)
+                        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+
+                      Text {
+                        id: actionText
+                        anchors.centerIn: parent
+                        text: root.canAdapt(pluginRow.plugin) && !root.adaptationFailed(pluginRow.plugin)
+                          ? "Embed in Drawer" : "Open native panel"
+                        color: root.foreground
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.bodySmall
+                      }
+
+                      MouseArea {
+                        id: actionHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        enabled: root.adaptingId === ""
+                        onClicked: root.activateItem(pluginRow.plugin)
+                      }
                     }
                   }
                 }
               }
+            }
+
+            footer: Item {
+              width: pluginList.width
+              height: Math.round(Style.space(24))
+
+              DropArea {
+                anchors.fill: parent
+                keys: ["omarchy-drawer-plugin"]
+                onDropped: function(drop) {
+                  var last = root.pluginItems.length > 0 ? root.pluginItems[root.pluginItems.length - 1] : null
+                  if (last) root.moveItem(root.draggedId, last.id, true)
+                  drop.accepted = true
+                }
+              }
+            }
+          }
+
+          Rectangle {
+            id: addButton
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, Style.space(210))
+            height: Math.round(Style.space(36))
+            radius: height / 2
+            color: addHover.containsMouse
+              ? Style.hoverFillFor(root.foreground, Color.accent)
+              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+
+            Text {
+              anchors.centerIn: parent
+              text: "+ Add installed plugin"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            MouseArea {
+              id: addHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.catalogOpen = true
+            }
+          }
+        }
+      }
+    }
+
+    Rectangle {
+      id: catalog
+      anchors.fill: parent
+      visible: root.catalogOpen
+      z: 10
+      color: Qt.rgba(0, 0, 0, 0.56)
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: root.catalogOpen = false
+      }
+
+      Rectangle {
+        anchors.centerIn: parent
+        width: Math.min(parent.width - Style.space(36), Style.space(420))
+        height: Math.min(parent.height - Style.space(36), Style.space(520))
+        radius: Style.cornerRadius
+        color: Color.popups.background
+        border.width: 1
+        border.color: Color.popups.border
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Item {
+          anchors.fill: parent
+          anchors.margins: Style.space(14)
+
+          Item {
+            id: catalogTitleRow
+            anchors.top: parent.top
+            width: parent.width
+            height: Math.max(catalogTitle.implicitHeight, catalogClose.height)
+
+            Text {
+              id: catalogTitle
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "ADD PLUGIN"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            Text {
+              id: catalogClose
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              text: "x"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.catalogOpen = false
+              }
+            }
+          }
+
+          ListView {
+            anchors.top: catalogTitleRow.bottom
+            anchors.topMargin: Style.space(10)
+            anchors.bottom: parent.bottom
+            width: parent.width
+            clip: true
+            spacing: Style.space(5)
+            model: root.availablePlugins
+
+            delegate: Rectangle {
+              required property var modelData
+              width: parent.width
+              height: Math.round(Style.space(48))
+              radius: Style.cornerRadius / 2
+              color: catalogRowHover.containsMouse
+                ? Style.hoverFillFor(root.foreground, Color.accent)
+                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035)
+
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.right: addAvailable.left
+                anchors.rightMargin: Style.space(10)
+                anchors.top: parent.top
+                anchors.topMargin: Style.space(6)
+                text: String(modelData.label)
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideRight
+              }
+
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.right: addAvailable.left
+                anchors.rightMargin: Style.space(10)
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Style.space(6)
+                text: modelData.enabled ? String(modelData.description) : "Installed, currently disabled"
+                color: root.foreground
+                opacity: 0.56
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
+
+              Text {
+                id: addAvailable
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                text: "+"
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.subtitle
+              }
+
+              MouseArea {
+                id: catalogRowHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.addPlugin(String(modelData.id))
+              }
+            }
+
+            Text {
+              anchors.centerIn: parent
+              visible: root.availablePlugins.length === 0
+              text: "All installed plugins are already in this list."
+              color: root.foreground
+              opacity: 0.64
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
             }
           }
         }

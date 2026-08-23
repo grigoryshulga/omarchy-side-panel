@@ -1,7 +1,7 @@
 # Omarchy Drawer
 
 `omarchy-drawer` is an edge drawer for secondary Omarchy plugins. It keeps one
-bar icon and exposes one or more pages of plugin shortcuts from the configured
+bar icon and exposes a reorderable, collapsible plugin list from the configured
 left, right, top, or bottom screen edge.
 
 ## Compatibility
@@ -41,34 +41,34 @@ the installer did not place it automatically.
 
 ## Configuration
 
-The edge is available in the Omarchy plugin settings. Pages are intentionally
-kept as plain data in the Drawer layout entry in
+The edge is available in the Omarchy plugin settings. The vertical plugin list
+is kept as plain data in the Drawer layout entry in
 `~/.config/omarchy/shell.json`:
 
 ```json
 {
   "id": "gshulga.drawer",
   "edge": "left",
-  "pages": [
-    {
-      "title": "Work",
-      "items": [
-        { "id": "gshulga.jira", "label": "Jira", "icon": "\\ue75c" },
-        { "id": "io.github.sotoaugusto.ticktick", "label": "Tasks", "icon": "\\uf0ae" }
-      ]
-    },
-    {
-      "title": "System",
-      "items": [
-        { "id": "omarchy.network", "label": "Network", "icon": "\\uf1eb" },
-        { "id": "omarchy.bluetooth", "label": "Bluetooth", "icon": "\\uf293" }
-      ]
-    }
+  "plugins": [
+    { "id": "gshulga.jira", "label": "Jira", "icon": "\\ue75c" },
+    { "id": "io.github.sotoaugusto.ticktick", "label": "Tasks", "icon": "\\uf0ae" },
+    { "id": "omarchy.network", "label": "Network", "icon": "\\uf1eb" },
+    { "id": "omarchy.bluetooth", "label": "Bluetooth", "icon": "\\uf293" }
   ]
 }
 ```
 
-When `pages` is omitted, Drawer starts with a small local default page.
+When `plugins` is omitted, Drawer starts with a small local default list.
+Existing `pages` configuration is flattened into the list the first time its
+order or membership is changed.
+
+## Plugin List
+
+- Click a plugin header to expand or collapse its embedded panel.
+- Drag the `::` handle to reorder plugin headers. Drawer persists the order.
+- Click `+` to see every installed Omarchy plugin not already in the list, then
+  add one immediately. Disabled plugins are identified in that catalog; their
+  native fallback requires enabling them in Omarchy first.
 
 ## Embedded Page Contract
 
@@ -110,9 +110,7 @@ Item {
 ## Keyboard Controls
 
 - `Escape`: close the drawer.
-- Left/Right: select a page.
-- Up/Down: select a plugin.
-- Enter: open a non-embedded plugin in its native panel.
+- `Escape` while the add catalog is open: close the catalog.
 
 ## Automatic Embedding
 
