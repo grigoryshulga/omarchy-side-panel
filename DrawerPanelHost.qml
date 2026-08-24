@@ -41,6 +41,10 @@ Item {
     return Math.round(Math.min(desired, root.height > 0 ? root.height : desired))
   }
 
+  function focusPanel() {
+    if (focusTarget) focusTarget.forceActiveFocus()
+  }
+
   visible: open
   // This sits above the embedded panel's key catcher. Escape must close the
   // containing Drawer rather than only changing the panel's local state.
@@ -48,6 +52,10 @@ Item {
   Keys.onPressed: function(event) {
     if (event.key === Qt.Key_Escape && root.open && drawerHost && typeof drawerHost.handleEscape === "function") {
       drawerHost.handleEscape()
+      event.accepted = true
+    } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)
+        && drawerHost && typeof drawerHost.focusKeyboardPlugin === "function") {
+      drawerHost.focusKeyboardPlugin((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
       event.accepted = true
     }
   }

@@ -183,6 +183,14 @@ Item {
     pluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
   }
 
+  function focusKeyboardPlugin(delta) {
+    moveKeyboardPlugin(delta)
+    Qt.callLater(function() {
+      var row = pluginList.itemAtIndex(keyboardPluginIndex)
+      if (row && typeof row.focusPanel === "function") row.focusPanel()
+    })
+  }
+
   function scrollPluginList(deltaX, deltaY) {
     if (hoveredPanelId !== "") return
     var delta = verticalEdge ? deltaY : (deltaX !== 0 ? deltaX : deltaY)
@@ -911,6 +919,8 @@ Item {
     Shortcut { sequence: "Alt+7"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(6) }
     Shortcut { sequence: "Alt+8"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(7) }
     Shortcut { sequence: "Alt+9"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(8) }
+    Shortcut { sequence: "Ctrl+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(1) }
+    Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(-1) }
 
     Rectangle {
       id: drawerBody
@@ -1125,6 +1135,11 @@ Item {
               height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
               z: root.draggedId === pluginId ? 3 : 1
 
+              function focusPanel() {
+                if (pageLoader.item && typeof pageLoader.item.drawerFocus === "function") pageLoader.item.drawerFocus()
+                else forceActiveFocus()
+              }
+
               Rectangle {
                 id: header
                 visible: root.editing
@@ -1259,6 +1274,8 @@ Item {
                   anchors.topMargin: Style.space(5)
                   radius: Style.cornerRadius / 2
                   color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
+                  border.width: pluginRow.index === root.keyboardPluginIndex ? 1 : 0
+                  border.color: Color.accent
 
                   HoverHandler {
                     id: panelHover
@@ -1282,7 +1299,7 @@ Item {
                       root.injectPanel(item, pluginRow.plugin)
                     }
                     onStatusChanged: {
-                      if (status === Loader.Error) root.setPanelError(pluginRow.plugin, errorString())
+                      if (status === Loader.Error) root.setPanelError(pluginRow.plugin, "The embedded page could not be loaded.")
                     }
                   }
 

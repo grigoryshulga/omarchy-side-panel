@@ -36,6 +36,8 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("DrawerDisabledIpc { function close()", transformed)
         self.assertIn("DrawerHiddenBarButton {", transformed)
         self.assertIn("DrawerPanelHost {\n    anchors.fill: parent\n    drawerHost: root.drawerHost", transformed)
+        self.assertIn("function drawerFocus()", transformed)
+        self.assertIn("onFocusTargetChanged: root.drawerFocusTarget = focusTarget", transformed)
         self.assertIn("function close() { root.close() }", transformed)
         self.assertIn("// KeyboardPanel { root.controller.hide()", transformed)
 

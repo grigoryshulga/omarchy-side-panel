@@ -17,7 +17,7 @@ class AdaptationError(Exception):
     """The source does not satisfy Drawer's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "drawer-adapter-v4"
+ADAPTER_VERSION = "drawer-adapter-v5"
 
 
 @dataclass(frozen=True)
@@ -167,12 +167,20 @@ def transform_qml(source: str) -> str:
         raise AdaptationError("KeyboardPanel uses reserved Drawer host properties")
 
     replacements: list[tuple[int, int, str]] = [
-        (root.open_token.end, root.open_token.end, "\n  property var drawerHost: null"),
+        (
+            root.open_token.end,
+            root.open_token.end,
+            "\n  property var drawerHost: null"
+            "\n  property var drawerFocusTarget: null"
+            "\n  function drawerFocus() { if (drawerFocusTarget) drawerFocusTarget.forceActiveFocus() }",
+        ),
         (host.type_token.start, host.type_token.end, "DrawerPanelHost"),
         (
             host.open_token.end,
             host.open_token.end,
-            f"\n    anchors.fill: parent\n    drawerHost: {root_id}.drawerHost\n    page: {root_id}",
+            f"\n    anchors.fill: parent\n    drawerHost: {root_id}.drawerHost\n    page: {root_id}"
+            f"\n    onFocusTargetChanged: {root_id}.drawerFocusTarget = focusTarget"
+            f"\n    Component.onCompleted: {root_id}.drawerFocusTarget = focusTarget",
         ),
     ]
 
