@@ -1736,34 +1736,17 @@ Item {
       }
     }
 
-    Rectangle {
-      id: settingsOverlay
-      anchors.fill: parent
+    Item {
+      id: settingsPage
+      anchors.fill: drawerBody
       visible: root.settingsOpen
       z: 11
-      color: Qt.rgba(0, 0, 0, 0.56)
 
-      MouseArea { anchors.fill: parent; onClicked: root.settingsOpen = false }
-
-      Rectangle {
-        id: settingsDialog
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Style.space(36), Style.space(380))
-        height: Math.min(parent.height - Style.space(36), settingsContent.implicitHeight + Style.space(32))
-        radius: Style.cornerRadius
-        color: Color.popups.background
-        border.width: 1
-        border.color: Color.popups.border
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: settingsContent
-          anchors.top: parent.top
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.margins: Style.space(16)
-          spacing: Style.space(14)
+      Column {
+        id: settingsContent
+        anchors.fill: parent
+        anchors.margins: Style.space(14)
+        spacing: Style.space(14)
 
           Item {
             width: parent.width
@@ -1773,7 +1756,7 @@ Item {
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               text: "DRAWER"
-              color: root.foreground
+              color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
               font.bold: true
@@ -1786,13 +1769,13 @@ Item {
               height: width
               radius: height / 2
               color: settingsCloseHover.containsMouse
-                ? Style.hoverFillFor(root.foreground, Color.accent)
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                 : "transparent"
 
               Text {
                 anchors.centerIn: parent
                 text: "\uf00d"
-                color: root.foreground
+                color: root.chromeForeground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
@@ -1809,7 +1792,7 @@ Item {
 
           Text {
             text: "EDGE"
-            color: root.foreground
+            color: root.chromeForeground
             opacity: 0.6
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
@@ -1832,22 +1815,22 @@ Item {
                 height: Math.round(Style.space(52))
                 radius: Style.cornerRadius / 2
                 color: root.edge === modelData.edge
-                  ? Style.selectedFillFor(root.foreground, Color.accent)
-                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+                  ? Style.selectedFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
                 Column {
                   anchors.centerIn: parent
                   spacing: Style.space(2)
                   Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: modelData.icon
-                    color: root.foreground
+                    color: root.chromeForeground
                     font.family: Style.font.family
                     font.pixelSize: Style.font.body
                   }
                   Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: modelData.label
-                    color: root.foreground
+                    color: root.chromeForeground
                     font.family: Style.font.family
                     font.pixelSize: Style.font.caption
                   }
@@ -1863,7 +1846,7 @@ Item {
 
           Text {
             text: "DISPLAY MODE"
-            color: root.foreground
+            color: root.chromeForeground
             opacity: 0.6
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
@@ -1884,13 +1867,13 @@ Item {
                 height: Math.round(Style.space(42))
                 radius: Style.cornerRadius / 2
                 color: root.layoutMode === modelData.mode
-                  ? Style.selectedFillFor(root.foreground, Color.accent)
-                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+                  ? Style.selectedFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
 
                 Text {
                   anchors.centerIn: parent
                   text: modelData.label
-                  color: root.foreground
+                  color: root.chromeForeground
                   font.family: Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -1907,14 +1890,13 @@ Item {
           Text {
             visible: root.drawerPages.length > 1
             text: "Delete current page"
-            color: root.foreground
+            color: root.chromeForeground
             opacity: 0.7
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
           }
 
-        }
       }
     }
   }
