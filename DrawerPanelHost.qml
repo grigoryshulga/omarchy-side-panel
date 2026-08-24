@@ -65,7 +65,12 @@ Item {
         if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
       })
     } else if (!open && drawerHost && page && typeof drawerHost.panelClosed === "function") {
-      drawerHost.panelClosed(page)
+      // Native panels commonly hide themselves before summoning another
+      // window. Defer Drawer teardown so the summon call can still run.
+      Qt.callLater(function() {
+        if (!root.open && root.drawerHost && root.page && typeof root.drawerHost.panelClosed === "function")
+          root.drawerHost.panelClosed(root.page)
+      })
     }
   }
 
