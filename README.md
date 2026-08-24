@@ -1,5 +1,9 @@
 # Omarchy Side Panel
 
+<p align="center">
+  <img src="assets/banner.png" alt="Omarchy Side Panel" width="100%">
+</p>
+
 `omarchy-side-panel` is an edge side panel for secondary Omarchy plugins. It keeps one
 bar icon and exposes a reorderable, collapsible plugin list from the configured
 left, right, top, or bottom screen edge.
