@@ -4,6 +4,28 @@
 bar icon and exposes a reorderable, collapsible plugin list from the configured
 left, right, top, or bottom screen edge.
 
+## Why a side panel?
+
+A side panel is the home for plugins that are convenient to keep at hand but do
+not need to be on screen at all times. They stay one action away instead of
+permanently occupying workspace.
+
+The opposite workflow works just as well: pin the panel and keep it open while
+you work. It becomes a dedicated strip for information you want to watch, such as
+token budgets, agent progress, or any other live data from the plugins you run —
+all the operationally relevant details stay within reach.
+
+## Features
+
+- Place the panel on any screen edge: left, right, top, or bottom.
+- Two display modes: `overlay` (floats above windows) and `reserve` (reserves
+  its edge, so Hyprland lays out normal windows in the remaining space).
+- Pin the panel so it stays open when another bar popout is activated.
+- Organize plugins into several pages.
+- Resize every plugin panel individually.
+- Keyboard-centric controls.
+- Optional transparent background to keep the interface light.
+
 ## Preview
 
 Side Panel keeps related Omarchy pages in one keyboard-navigable surface while
@@ -17,7 +39,13 @@ leaving the current workspace visible.
 | --- | --- |
 | ![Left side panel showing media controls](assets/screenshots/left-media.png) | ![Top side panel showing compact plugin widths](assets/screenshots/top-agents.png) |
 
-![Top side panel showing the network page](assets/screenshots/top-network.png)
+| Top: media | Top: network |
+| --- | --- |
+| ![Top side panel showing the media page](assets/screenshots/top-media.png) | ![Top side panel showing the network page](assets/screenshots/top-network.png) |
+
+| Overlay mode | Transparent background |
+| --- | --- |
+| ![Side Panel floating over windows in overlay mode](assets/screenshots/overlay-example.png) | ![Side Panel with a transparent background](assets/screenshots/transparent-example.png) |
 
 ## Compatibility
 
