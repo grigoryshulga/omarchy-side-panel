@@ -1290,7 +1290,9 @@ Item {
                   anchors.fill: parent
                   anchors.topMargin: Style.space(5)
                   radius: Style.cornerRadius / 2
-                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
+                  color: root.transparentBackground
+                    ? Color.popups.background
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
                   border.width: pluginRow.index === root.keyboardPluginIndex ? 1 : 0
                   border.color: Color.accent
 
@@ -1675,9 +1677,10 @@ Item {
       MouseArea { anchors.fill: parent; onClicked: root.settingsOpen = false }
 
       Rectangle {
+        id: settingsDialog
         anchors.centerIn: parent
         width: Math.min(parent.width - Style.space(36), Style.space(380))
-        height: Math.min(parent.height - Style.space(36), Style.space(420))
+        height: Math.min(parent.height - Style.space(36), settingsContent.implicitHeight + Style.space(32))
         radius: Style.cornerRadius
         color: Color.popups.background
         border.width: 1
@@ -1686,13 +1689,16 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: {} }
 
         Column {
-          anchors.fill: parent
+          id: settingsContent
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
           anchors.margins: Style.space(16)
           spacing: Style.space(14)
 
           Item {
             width: parent.width
-            height: settingsTitle.implicitHeight
+            height: Math.max(settingsTitle.implicitHeight, settingsClose.height)
             Text {
               id: settingsTitle
               anchors.left: parent.left
@@ -1703,14 +1709,32 @@ Item {
               font.pixelSize: Style.font.title
               font.bold: true
             }
-            Text {
+            Rectangle {
+              id: settingsClose
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              text: "Close"
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = false }
+              width: Math.round(Style.space(28))
+              height: width
+              radius: height / 2
+              color: settingsCloseHover.containsMouse
+                ? Style.hoverFillFor(root.foreground, Color.accent)
+                : "transparent"
+
+              Text {
+                anchors.centerIn: parent
+                text: "\uf00d"
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: settingsCloseHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.settingsOpen = false
+              }
             }
           }
 
@@ -1723,6 +1747,8 @@ Item {
           }
 
           Row {
+            id: edgeOptions
+            width: parent.width
             spacing: Style.space(8)
             Repeater {
               model: [
@@ -1733,7 +1759,7 @@ Item {
               ]
               delegate: Rectangle {
                 required property var modelData
-                width: Math.round(Style.space(62))
+                width: Math.floor((edgeOptions.width - edgeOptions.spacing * 3) / 4)
                 height: Math.round(Style.space(52))
                 radius: Style.cornerRadius / 2
                 color: root.edge === modelData.edge
@@ -1775,6 +1801,8 @@ Item {
           }
 
           Row {
+            id: displayModeOptions
+            width: parent.width
             spacing: Style.space(8)
             Repeater {
               model: [
@@ -1783,7 +1811,7 @@ Item {
               ]
               delegate: Rectangle {
                 required property var modelData
-                width: Math.round(Style.space(118))
+                width: Math.floor((displayModeOptions.width - displayModeOptions.spacing) / 2)
                 height: Math.round(Style.space(42))
                 radius: Style.cornerRadius / 2
                 color: root.layoutMode === modelData.mode
