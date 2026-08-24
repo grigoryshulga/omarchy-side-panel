@@ -470,15 +470,6 @@ Item {
   function adaptStandardPanel(item) {
     if (!item || !canAdapt(item) || adaptingId !== "") return
     var id = resolvedPluginId(item)
-    if (item.embedding !== "standard") {
-      var nextItems = copyItems(pluginItems)
-      var index = itemIndex(id)
-      if (index >= 0) {
-        nextItems[index].embedding = "standard"
-        persistItems(nextItems)
-        item = itemFor(id)
-      }
-    }
     var manifest = pluginFor(item.id)
     adaptingId = id
     clearAdaptationError(id)
@@ -496,11 +487,14 @@ Item {
 
   function adaptPreferredPanels() {
     if (!opened || adaptingId !== "") return
-    for (var i = 0; i < pluginItems.length; i++) {
-      var item = pluginItems[i]
-      if (item.embedding === "standard" && adaptedUrl(item) === "" && canAdapt(item) && !adaptationFailed(item)) {
-        adaptStandardPanel(item)
-        return
+    for (var pageIndex = 0; pageIndex < drawerPages.length; pageIndex++) {
+      var items = drawerPages[pageIndex].items || []
+      for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+        var item = items[itemIndex]
+        if (adaptedUrl(item) === "" && canAdapt(item) && !adaptationFailed(item)) {
+          adaptStandardPanel(item)
+          return
+        }
       }
     }
   }
@@ -659,6 +653,7 @@ Item {
     }
     if (opened) {
       currentPage = 0
+      adaptationErrors = ({})
       adaptPreferredPanels()
     }
   }
@@ -678,11 +673,13 @@ Item {
       root.adaptingId = ""
       if (exitCode !== 0) {
         root.setAdaptationError(id, String(adapterErrors.text || "This plugin does not expose a standard Omarchy panel.").trim())
+        root.adaptPreferredPanels()
         return
       }
       var url = String(adapterOutput.text || "").trim()
       if (url === "") {
         root.setAdaptationError(id, "The adapter produced no embedded page.")
+        root.adaptPreferredPanels()
         return
       }
       var next = ({})
@@ -1175,7 +1172,9 @@ Item {
                           ? "Embedding the standard Omarchy panel..."
                           : (root.adaptationFailed(pluginRow.plugin) && root.adaptationError(pluginRow.plugin) !== ""
                             ? root.adaptationError(pluginRow.plugin)
-                            : "Embed this panel in Drawer without changing its plugin."))
+                            : (root.canAdapt(pluginRow.plugin)
+                              ? "Preparing embedded panel..."
+                              : "This plugin does not support embedding in Drawer.")))
                       color: root.foreground
                       opacity: 0.65
                       font.family: Style.font.family
@@ -1184,35 +1183,6 @@ Item {
                       wrapMode: Text.WordWrap
                     }
 
-                    Rectangle {
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      width: actionText.implicitWidth + Style.space(20)
-                      height: actionText.implicitHeight + Style.space(12)
-                      radius: Style.cornerRadius / 2
-                      color: actionHover.containsMouse
-                        ? Style.hoverFillFor(root.foreground, Color.accent)
-                        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-
-                      Text {
-                        id: actionText
-                        anchors.centerIn: parent
-                        text: root.canAdapt(pluginRow.plugin) && !root.panelLoadFailed(pluginRow.plugin)
-                          ? (root.adaptationFailed(pluginRow.plugin) ? "Retry embedding" : "Embed in Drawer")
-                          : "Open native panel"
-                        color: root.foreground
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.bodySmall
-                      }
-
-                      MouseArea {
-                        id: actionHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        enabled: root.adaptingId === ""
-                        onClicked: root.activateItem(pluginRow.plugin)
-                      }
-                    }
                   }
                 }
 
