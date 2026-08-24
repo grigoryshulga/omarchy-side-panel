@@ -1405,8 +1405,8 @@ Item {
                   color: root.transparentBackground
                     ? Color.popups.background
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
-                  border.width: pluginRow.index === root.keyboardPluginIndex ? 1 : 0
-                  border.color: Color.accent
+                  border.width: 1
+                  border.color: pluginRow.index === root.keyboardPluginIndex ? Color.accent : Color.popups.border
 
                   HoverHandler {
                     id: panelHover
