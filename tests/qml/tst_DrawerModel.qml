@@ -40,8 +40,8 @@ TestCase {
     compare(DrawerModel.move(source, "three", "one", false).map(function(item) { return item.id }).join(","), "three,one,two")
     compare(DrawerModel.move(source, "two", "three", false).map(function(item) { return item.id }).join(","), "one,two,three")
     compare(source[0].id, "one")
-    compare(DrawerModel.resizeHeight(200, 10, -1000, 160, 520, 5), 160)
-    compare(DrawerModel.resizeHeight(200, 10, 333, 160, 520, 5), 520)
+    compare(DrawerModel.resizeHeight(200, 10, -1000, 5, 5), 5)
+    compare(DrawerModel.resizeHeight(200, 10, 333, 5, 5), 525)
   }
 
   function test_persisted_entry_uses_only_named_pages() {

@@ -358,7 +358,7 @@ Item {
     if (item && resizingId === item.id) return resizePreviewHeight
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
-    return Math.round(Math.max(Style.space(160), Math.min(Style.space(520), height)))
+    return Math.max(5, Math.round(height))
   }
 
   function beginResize(item, y) {
@@ -370,10 +370,7 @@ Item {
 
   function updateResize(y) {
     if (resizingId === "") return
-    var height = resizeStartHeight + y - resizeStartY
-    resizePreviewHeight = DrawerModel.resizeHeight(
-      resizeStartHeight, resizeStartY, y, Style.space(160), Style.space(520), 5
-    )
+    resizePreviewHeight = DrawerModel.resizeHeight(resizeStartHeight, resizeStartY, y, 5, 5)
   }
 
   function finishResize() {

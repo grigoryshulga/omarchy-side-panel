@@ -77,13 +77,9 @@ function copy(items) {
   return result
 }
 
-function clampHeight(value, minimum, maximum) {
-  return Math.round(Math.max(minimum, Math.min(maximum, finiteNumber(value, minimum))))
-}
-
-function resizeHeight(startHeight, startY, currentY, minimum, maximum, step) {
-  var raw = clampHeight(startHeight + currentY - startY, minimum, maximum)
-  return Math.round(raw / step) * step
+function resizeHeight(startHeight, startY, currentY, minimum, step) {
+  var raw = Math.max(minimum, finiteNumber(startHeight + currentY - startY, minimum))
+  return Math.max(minimum, Math.round(raw / step) * step)
 }
 
 function move(items, sourceId, targetId, after) {
