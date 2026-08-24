@@ -16,7 +16,7 @@ function normalize(items, resolveId) {
   for (var i = 0; i < (items || []).length; i++) {
     var item = items[i] || ({})
     var id = String(resolveId(item) || "")
-    if (id === "" || id === "gshulga.drawer" || seen[id]) continue
+    if (id === "" || id === "gshulga.side-panel" || seen[id]) continue
     seen[id] = true
     normalized.push({
       id: id,
@@ -112,7 +112,7 @@ function copyPages(pages) {
 }
 
 function persistedEntry(settings, pages) {
-  var entry = ({ id: "gshulga.drawer" })
+  var entry = ({ id: "gshulga.side-panel" })
   for (var key in settings || ({})) {
     if (key !== "id" && key !== "pages" && key !== "plugins" && key !== "transparentBackground") entry[key] = settings[key]
   }

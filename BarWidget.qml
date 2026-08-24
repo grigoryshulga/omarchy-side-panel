@@ -8,7 +8,7 @@ import qs.Ui
 BarWidget {
   id: root
 
-  moduleName: "gshulga.drawer"
+  moduleName: "gshulga.side-panel"
 
   readonly property string icon: edge === "left" ? ""
     : (edge === "right" ? "" : (edge === "top" ? "󱔓" : "󱂩"))
@@ -20,12 +20,12 @@ BarWidget {
     var value = String(setting("layoutMode", "overlay")).toLowerCase()
     return ["overlay", "reserve"].indexOf(value) >= 0 ? value : "overlay"
   }
-  readonly property bool opened: drawer.opened
+  readonly property bool opened: sidePanel.opened
   property bool popoutSwitchClosing: false
 
-  function open() { drawer.open() }
-  function close() { drawer.close() }
-  function togglePanel() { drawer.toggle() }
+  function open() { sidePanel.open() }
+  function close() { sidePanel.close() }
+  function togglePanel() { sidePanel.toggle() }
   function summonFromIpc() {
     if (bar && bar.shell && typeof bar.shell.summon === "function") bar.shell.summon(moduleName)
     else open()
@@ -39,17 +39,17 @@ BarWidget {
     else togglePanel()
   }
   function closeForPopoutSwitch() {
-    if (drawer.pinned) return
+    if (sidePanel.pinned) return
     popoutSwitchClosing = true
-    drawer.close()
+    sidePanel.close()
     Qt.callLater(function() { popoutSwitchClosing = false })
   }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Drawer {
-    id: drawer
+  SidePanel {
+    id: sidePanel
     bar: root.bar
     anchorItem: root
     settings: root.settings
@@ -73,7 +73,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    tooltipText: root.opened ? "Close drawer" : "Open drawer"
+    tooltipText: root.opened ? "Close side panel" : "Open side panel"
     active: root.opened
     onPressed: function() { root.togglePanel() }
   }

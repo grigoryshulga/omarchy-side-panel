@@ -5,7 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
-import "DrawerModel.js" as DrawerModel
+import "SidePanelModel.js" as SidePanelModel
 
 Item {
   id: root
@@ -35,33 +35,33 @@ Item {
   property bool dropAfter: false
   property real dropLineY: 0
   property var activePanels: []
-  property var drawerPages: []
+  property var sidePanelPages: []
   property int currentPage: 0
-  readonly property var pluginItems: drawerPages.length > 0 && drawerPages[currentPage]
-    ? drawerPages[currentPage].items : []
+  readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
+    ? sidePanelPages[currentPage].items : []
   property var adaptedUrls: ({})
   property string adaptingId: ""
   property var adaptationErrors: ({})
   property var panelErrors: ({})
   property int panelEpoch: 0
-  property bool resizingDrawer: false
-  property real drawerResizeStart: 0
-  property real drawerResizeStartExtent: 0
-  property real drawerResizePreview: 0
+  property bool resizingSidePanel: false
+  property real sidePanelResizeStart: 0
+  property real sidePanelResizeStartExtent: 0
+  property real sidePanelResizePreview: 0
   property int keyboardPluginIndex: -1
   property string hoveredPanelId: ""
-  property var drawerState: ({})
+  property var sidePanelState: ({})
 
-  readonly property int drawerWidth: Math.round(Style.space(480))
-  readonly property int drawerHeight: Math.round(Style.space(420))
+  readonly property int sidePanelWidth: Math.round(Style.space(480))
+  readonly property int sidePanelHeight: Math.round(Style.space(420))
   readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
   readonly property bool transparentBackground: reservesSpace && bar && bar.transparent === true
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
-  readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? drawerWidth : drawerHeight))
-  readonly property real drawerExtent: resizingDrawer ? drawerResizePreview : configuredExtent
+  readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight))
+  readonly property real sidePanelExtent: resizingSidePanel ? sidePanelResizePreview : configuredExtent
   readonly property color foreground: Color.popups.text
   readonly property color transparentTextForeground: Color.bar.text
   readonly property color transparentContrastForeground: Color.background
@@ -69,12 +69,12 @@ Item {
   readonly property color chromeForeground: transparentBackground ? transparentForeground : foreground
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
-  readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
-  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/gshulga.drawer.json"
+  readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-side-panel"
+  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/gshulga.side-panel.json"
   readonly property var availablePlugins: discoverAvailablePlugins()
 
   function setting(name, fallback) {
-    var value = drawerState && drawerState[name] !== undefined ? drawerState[name]
+    var value = sidePanelState && sidePanelState[name] !== undefined ? sidePanelState[name]
       : (settings ? settings[name] : undefined)
     return value === undefined || value === null ? fallback : value
   }
@@ -98,11 +98,11 @@ Item {
 
   function refreshTransparentForeground() {
     if (!transparentBackground || transparentForegroundProc.running) return
-    // Match Bar's wallpaper-sampled contrast choice for Drawer’s own edge.
+    // Match Bar's wallpaper-sampled contrast choice for the side panel's own edge.
     transparentForegroundProc.command = [
       "omarchy-bar-text-color",
       edge,
-      String(Math.max(1, Math.round(drawerExtent))),
+      String(Math.max(1, Math.round(sidePanelExtent))),
       colorHex(transparentTextForeground),
       colorHex(transparentContrastForeground)
     ]
@@ -119,75 +119,75 @@ Item {
   }
 
   function normalizeItems(items) {
-    return DrawerModel.normalize(items, function(item) { return root.resolvedPluginId(item) })
+    return SidePanelModel.normalize(items, function(item) { return root.resolvedPluginId(item) })
   }
 
   function pagesFromSettings() {
-    var source = drawerState && Array.isArray(drawerState.pages) && drawerState.pages.length > 0
-      ? drawerState : settings
-    return DrawerModel.pagesFromSettings(source, defaultPluginItems(), function(item) {
+    var source = sidePanelState && Array.isArray(sidePanelState.pages) && sidePanelState.pages.length > 0
+      ? sidePanelState : settings
+    return SidePanelModel.pagesFromSettings(source, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
   }
 
   function copyItems(items) {
-    return DrawerModel.copy(items)
+    return SidePanelModel.copy(items)
   }
 
   function copyPages(pages) {
-    return DrawerModel.copyPages(pages)
+    return SidePanelModel.copyPages(pages)
   }
 
   function currentPageRecord() {
-    return drawerPages.length > 0 ? drawerPages[currentPage] : null
+    return sidePanelPages.length > 0 ? sidePanelPages[currentPage] : null
   }
 
   function persistPages(pages, nextPage) {
-    var nextPages = DrawerModel.normalizePages(pages, defaultPluginItems(), function(item) {
+    var nextPages = SidePanelModel.normalizePages(pages, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
     deactivateActivePanels()
-    drawerPages = nextPages
+    sidePanelPages = nextPages
     currentPage = Math.max(0, Math.min(nextPages.length - 1, nextPage === undefined ? currentPage : nextPage))
-    persistDrawerState()
-    var entry = DrawerModel.persistedEntry(settings, nextPages)
+    persistSidePanelState()
+    var entry = SidePanelModel.persistedEntry(settings, nextPages)
     settings = entry
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
-      bar.shell.updateEntryInline("gshulga.drawer", entry)
+      bar.shell.updateEntryInline("gshulga.side-panel", entry)
   }
 
   function persistItems(items) {
     var nextItems = normalizeItems(items)
-    var nextPages = copyPages(drawerPages)
+    var nextPages = copyPages(sidePanelPages)
     if (nextPages.length === 0) nextPages.push({ title: "Plugins", items: [] })
     nextPages[currentPage].items = nextItems
     persistPages(nextPages, currentPage)
   }
 
   function selectPage(index) {
-    if (index < 0 || index >= drawerPages.length || index === currentPage) return
+    if (index < 0 || index >= sidePanelPages.length || index === currentPage) return
     deactivateActivePanels("page-change")
     currentPage = index
     expandedId = ""
     renamingPage = false
-    persistDrawerState()
+    persistSidePanelState()
     panelEpoch += 1
     if (opened) adaptPreferredPanels()
   }
 
   function movePage(delta) {
-    if (drawerPages.length < 2) return
-    selectPage((currentPage + delta + drawerPages.length) % drawerPages.length)
+    if (sidePanelPages.length < 2) return
+    selectPage((currentPage + delta + sidePanelPages.length) % sidePanelPages.length)
   }
 
   function addPage() {
-    var nextPages = copyPages(drawerPages)
+    var nextPages = copyPages(sidePanelPages)
     nextPages.push({ title: "Page " + (nextPages.length + 1), items: [] })
     persistPages(nextPages, nextPages.length - 1)
   }
 
   function renameCurrentPage(title) {
-    var nextPages = copyPages(drawerPages)
+    var nextPages = copyPages(sidePanelPages)
     if (nextPages.length === 0) return
     nextPages[currentPage].title = String(title || "").trim() || "Page " + (currentPage + 1)
     persistPages(nextPages, currentPage)
@@ -210,8 +210,8 @@ Item {
   }
 
   function removeCurrentPage() {
-    if (drawerPages.length <= 1) return
-    var nextPages = copyPages(drawerPages)
+    if (sidePanelPages.length <= 1) return
+    var nextPages = copyPages(sidePanelPages)
     nextPages.splice(currentPage, 1)
     persistPages(nextPages, Math.min(currentPage, nextPages.length - 1))
   }
@@ -243,21 +243,21 @@ Item {
     }
   }
 
-  function persistDrawerSetting(name, value) {
-    var entry = DrawerModel.persistedEntry(settings, drawerPages)
+  function persistSidePanelSetting(name, value) {
+    var entry = SidePanelModel.persistedEntry(settings, sidePanelPages)
     entry[name] = value
     var overrides = ({})
     overrides[name] = value
-    persistDrawerState(overrides)
+    persistSidePanelState(overrides)
     settings = entry
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
-      bar.shell.updateEntryInline("gshulga.drawer", entry)
+      bar.shell.updateEntryInline("gshulga.side-panel", entry)
   }
 
-  function persistDrawerState(overrides) {
+  function persistSidePanelState(overrides) {
     var state = {
       version: 1,
-      pages: copyPages(drawerPages),
+      pages: copyPages(sidePanelPages),
       currentPage: currentPage
     }
     var settingNames = ["edge", "edgeSize", "layoutMode"]
@@ -266,22 +266,22 @@ Item {
       var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
       if (value !== undefined && value !== null) state[name] = value
     }
-    drawerState = state
-    drawerStateFile.setText(JSON.stringify(state, null, 2) + "\n")
+    sidePanelState = state
+    sidePanelStateFile.setText(JSON.stringify(state, null, 2) + "\n")
   }
 
-  function loadDrawerState(raw) {
+  function loadSidePanelState(raw) {
     try {
       var state = JSON.parse(String(raw || ""))
       if (!state || state.version !== 1 || !Array.isArray(state.pages)) return
-      drawerState = state
+      sidePanelState = state
       deactivateActivePanels("state-load")
-      drawerPages = DrawerModel.normalizePages(state.pages, defaultPluginItems(), function(item) {
+      sidePanelPages = SidePanelModel.normalizePages(state.pages, defaultPluginItems(), function(item) {
         return root.resolvedPluginId(item)
       })
-      currentPage = Math.max(0, Math.min(drawerPages.length - 1, Number(state.currentPage) || 0))
+      currentPage = Math.max(0, Math.min(sidePanelPages.length - 1, Number(state.currentPage) || 0))
     } catch (error) {
-      console.warn("Drawer: cannot load saved state:", error)
+      console.warn("SidePanel: cannot load saved state:", error)
     }
   }
 
@@ -291,24 +291,24 @@ Item {
     return verticalEdge ? point.x : point.y
   }
 
-  function beginDrawerResize(position) {
-    resizingDrawer = true
-    drawerResizeStart = position
-    drawerResizeStartExtent = drawerExtent
-    drawerResizePreview = drawerExtent
+  function beginSidePanelResize(position) {
+    resizingSidePanel = true
+    sidePanelResizeStart = position
+    sidePanelResizeStartExtent = sidePanelExtent
+    sidePanelResizePreview = sidePanelExtent
   }
 
-  function updateDrawerResize(position) {
-    if (!resizingDrawer) return
-    var delta = position - drawerResizeStart
+  function updateSidePanelResize(position) {
+    if (!resizingSidePanel) return
+    var delta = position - sidePanelResizeStart
     if (edge === "right" || edge === "bottom") delta = -delta
-    drawerResizePreview = Math.round(Math.max(Style.space(260), Math.min(Style.space(900), drawerResizeStartExtent + delta)) / 5) * 5
+    sidePanelResizePreview = Math.round(Math.max(Style.space(260), Math.min(Style.space(900), sidePanelResizeStartExtent + delta)) / 5) * 5
   }
 
-  function finishDrawerResize() {
-    if (!resizingDrawer) return
-    persistDrawerSetting("edgeSize", drawerResizePreview)
-    resizingDrawer = false
+  function finishSidePanelResize() {
+    if (!resizingSidePanel) return
+    persistSidePanelSetting("edgeSize", sidePanelResizePreview)
+    resizingSidePanel = false
   }
 
   function itemFor(id) {
@@ -326,8 +326,8 @@ Item {
 
   function hasPlugin(id) {
     var wanted = resolvedPluginId({ id: id })
-    for (var pageIndex = 0; pageIndex < drawerPages.length; pageIndex++) {
-      var items = drawerPages[pageIndex].items || []
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++) {
+      var items = sidePanelPages[pageIndex].items || []
       for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
         if (resolvedPluginId(items[itemIndex]) === wanted) return true
       }
@@ -375,7 +375,7 @@ Item {
 
   function updateResize(y) {
     if (resizingId === "") return
-    resizePreviewHeight = DrawerModel.resizeHeight(resizeStartHeight, resizeStartY, y, 5, 5)
+    resizePreviewHeight = SidePanelModel.resizeHeight(resizeStartHeight, resizeStartY, y, 5, 5)
   }
 
   function finishResize() {
@@ -472,12 +472,12 @@ Item {
     var sourceIndex = itemIndex(sourceId)
     var targetIndex = itemIndex(targetId)
     if (sourceIndex < 0 || targetIndex < 0) return
-    persistItems(DrawerModel.move(pluginItems, sourceId, targetId, after))
+    persistItems(SidePanelModel.move(pluginItems, sourceId, targetId, after))
   }
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || hasPlugin(id) || id === "gshulga.drawer") return
+    if (id === "" || hasPlugin(id) || id === "gshulga.side-panel") return
     var manifest = pluginFor(id)
     if (!manifest) return
     var next = copyItems(pluginItems)
@@ -487,12 +487,12 @@ Item {
       icon: ""
     })
     persistItems(next)
-    enablePluginForDrawer(id, manifest)
+    enablePluginForSidePanel(id, manifest)
     catalogOpen = false
     setExpanded(id)
   }
 
-  function enablePluginForDrawer(id, manifest) {
+  function enablePluginForSidePanel(id, manifest) {
     if (pluginEnabled({ id: id }) || !bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
     bar.shell.mutateShellConfig(function(config) {
       var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
@@ -545,7 +545,7 @@ Item {
     var seen = ({})
     for (var id in plugins) {
       var resolvedId = resolvedPluginId({ id: id })
-      if (resolvedId === "gshulga.drawer" || hasPlugin(resolvedId) || seen[resolvedId]) continue
+      if (resolvedId === "gshulga.side-panel" || hasPlugin(resolvedId) || seen[resolvedId]) continue
       seen[resolvedId] = true
       var manifest = pluginFor(resolvedId)
       if (!manifest) continue
@@ -560,13 +560,13 @@ Item {
     return entries
   }
 
-  function drawerPageUrl(item) {
+  function sidePanelPageUrl(item) {
     if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return ""
     if (!pluginEnabled(item)) return ""
     var registry = bar.shell.pluginRegistry
     var manifest = pluginFor(item.id)
-    if (!manifest || !manifest.entryPoints || !manifest.entryPoints.drawerPage) return ""
-    return registry.entryPointUrl(manifest, "drawerPage")
+    if (!manifest || !manifest.entryPoints || !manifest.entryPoints.sidePanelPage) return ""
+    return registry.entryPointUrl(manifest, "sidePanelPage")
   }
 
   function adaptedUrl(item) {
@@ -574,12 +574,12 @@ Item {
     return String(adaptedUrls[resolvedPluginId(item)] || "")
   }
 
-  function panelUrl(item) { return drawerPageUrl(item) || adaptedUrl(item) }
+  function panelUrl(item) { return sidePanelPageUrl(item) || adaptedUrl(item) }
 
   function panelSource(item) {
     var url = panelUrl(item)
     if (url === "") return ""
-    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "drawerEpoch=" + panelEpoch
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "sidePanelEpoch=" + panelEpoch
   }
 
   function panelError(item) {
@@ -619,7 +619,7 @@ Item {
     clearAdaptationError(id)
     adapter.command = [
       "bash",
-      pluginDir + "bin/omarchy-drawer-adapt",
+      pluginDir + "bin/omarchy-side-panel-adapt",
       String(manifest.__sourceDir),
       String(manifest.entryPoints.barWidget),
       cacheRoot,
@@ -631,8 +631,8 @@ Item {
 
   function adaptPreferredPanels() {
     if (!opened || adaptingId !== "") return
-    for (var pageIndex = 0; pageIndex < drawerPages.length; pageIndex++) {
-      var items = drawerPages[pageIndex].items || []
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++) {
+      var items = sidePanelPages[pageIndex].items || []
       for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
         var item = items[itemIndex]
         if (adaptedUrl(item) === "" && canAdapt(item) && !adaptationFailed(item)) {
@@ -678,20 +678,20 @@ Item {
     if (!page) return
     var id = root.resolvedPluginId(item)
     var context = {
-      drawer: root,
-      drawerItem: item || ({}),
+      sidePanel: root,
+      sidePanelItem: item || ({}),
       bar: root.bar,
       pluginId: id,
       settings: root.nativeSettings(id),
       service: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
         ? root.bar.shell.serviceFor(id) : null
     }
-    if (typeof page.initializeDrawer === "function") {
-      page.initializeDrawer(context)
+    if (typeof page.initializeSidePanel === "function") {
+      page.initializeSidePanel(context)
     } else {
-      assignPanelProperty(page, "drawer", context.drawer)
-      assignPanelProperty(page, "drawerHost", context.drawer)
-      assignPanelProperty(page, "drawerItem", context.drawerItem)
+      assignPanelProperty(page, "sidePanel", context.sidePanel)
+      assignPanelProperty(page, "sidePanelHost", context.sidePanel)
+      assignPanelProperty(page, "sidePanelItem", context.sidePanelItem)
       assignPanelProperty(page, "bar", context.bar)
       assignPanelProperty(page, "settings", context.settings)
       assignPanelProperty(page, "pluginId", context.pluginId)
@@ -700,7 +700,7 @@ Item {
     var nextPanels = activePanels.slice()
     if (nextPanels.indexOf(page) < 0) nextPanels.push(page)
     activePanels = nextPanels
-    if (typeof page.drawerActivate === "function" && opened) page.drawerActivate(context)
+    if (typeof page.sidePanelActivate === "function" && opened) page.sidePanelActivate(context)
     else if (typeof page.open === "function" && opened) page.open()
   }
 
@@ -709,7 +709,7 @@ Item {
     try {
       page[name] = value
     } catch (error) {
-      console.warn("Drawer: cannot inject " + name + ":", error)
+      console.warn("SidePanel: cannot inject " + name + ":", error)
     }
   }
 
@@ -727,8 +727,8 @@ Item {
     for (var i = 0; i < panels.length; i++) {
       var panel = panels[i]
       if (!panel) continue
-      if ("drawerHost" in panel && typeof panel.close === "function") panel.close()
-      else if (typeof panel.drawerDeactivate === "function") panel.drawerDeactivate(reason || "drawer")
+      if ("sidePanelHost" in panel && typeof panel.close === "function") panel.close()
+      else if (typeof panel.sidePanelDeactivate === "function") panel.sidePanelDeactivate(reason || "sidePanel")
       else if (typeof panel.close === "function") panel.close()
     }
     suppressPanelClose = previousSuppression
@@ -743,7 +743,7 @@ Item {
       else nextPanels.push(activePanels[i])
     }
     // Panel hosts report close asynchronously. A panel removed during edit or
-    // page navigation must not be mistaken for a user-requested drawer close.
+    // page navigation must not be mistaken for a user-requested sidePanel close.
     if (!wasActive) return
     activePanels = nextPanels
     close()
@@ -753,7 +753,7 @@ Item {
   function close() {
     if (closing || !opened) return
     closing = true
-    deactivateActivePanels("drawer-close")
+    deactivateActivePanels("sidePanel-close")
     opened = false
     pinned = false
     catalogOpen = false
@@ -785,10 +785,10 @@ Item {
   onSettingsChanged: {
     deactivateActivePanels("settings-change")
     var selectedTitle = currentPageRecord() ? String(currentPageRecord().title) : ""
-    drawerPages = pagesFromSettings()
+    sidePanelPages = pagesFromSettings()
     currentPage = 0
-    for (var index = 0; index < drawerPages.length; index++) {
-      if (String(drawerPages[index].title) === selectedTitle) {
+    for (var index = 0; index < sidePanelPages.length; index++) {
+      if (String(sidePanelPages[index].title) === selectedTitle) {
         currentPage = index
         break
       }
@@ -798,23 +798,23 @@ Item {
     if (opened) adaptPreferredPanels()
   }
   Component.onCompleted: {
-    drawerPages = pagesFromSettings()
+    sidePanelPages = pagesFromSettings()
     scheduleTransparentForegroundRefresh()
   }
   onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentContrastForegroundChanged: scheduleTransparentForegroundRefresh()
   onEdgeChanged: scheduleTransparentForegroundRefresh()
-  onDrawerExtentChanged: scheduleTransparentForegroundRefresh()
+  onSidePanelExtentChanged: scheduleTransparentForegroundRefresh()
 
   FileView {
-    id: drawerStateFile
+    id: sidePanelStateFile
     path: root.statePath
     atomicWrites: true
     printErrors: false
-    onLoaded: root.loadDrawerState(text())
+    onLoaded: root.loadSidePanelState(text())
     onLoadFailed: Qt.callLater(function() {
-      if (root.drawerPages.length > 0) root.persistDrawerState()
+      if (root.sidePanelPages.length > 0) root.persistSidePanelState()
     })
   }
 
@@ -892,7 +892,7 @@ Item {
     visible: root.opened
     color: "transparent"
     exclusionMode: root.reservesSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
-    WlrLayershell.namespace: "gshulga-drawer"
+    WlrLayershell.namespace: "gshulga-side-panel"
     WlrLayershell.layer: WlrLayer.Overlay
     // An Exclusive focus prime is needed when reopening a still-mapped
     // layer surface; OnDemand alone does not reliably restore key delivery.
@@ -941,22 +941,22 @@ Item {
     }
 
     // Transparent layer surfaces need an explicit input region; otherwise the
-    // compositor routes clicks outside Drawer directly to the app beneath it.
+    // compositor routes clicks outside SidePanel directly to the app beneath it.
     mask: Region {
       width: surface.width
       height: surface.height
     }
 
     implicitWidth: root.verticalEdge
-      ? Math.min(root.drawerExtent, screen ? screen.width : root.drawerExtent) : 0
+      ? Math.min(root.sidePanelExtent, screen ? screen.width : root.sidePanelExtent) : 0
     implicitHeight: root.verticalEdge ? 0
-      : Math.min(root.drawerExtent, screen ? screen.height : root.drawerExtent)
+      : Math.min(root.sidePanelExtent, screen ? screen.height : root.sidePanelExtent)
 
     Shortcut {
       sequence: "Escape"
       enabled: root.opened
       // Embedded panels move active focus into their own key catchers. An
-      // application shortcut still reaches Drawer and provides one consistent
+      // application shortcut still reaches SidePanel and provides one consistent
       // close path in both normal and edit modes.
       context: Qt.ApplicationShortcut
       onActivated: {
@@ -964,9 +964,9 @@ Item {
       }
     }
 
-    // The fullscreen layer surface sits above the bar while Drawer is open.
+    // The fullscreen layer surface sits above the bar while SidePanel is open.
     // Forward clicks in the bar strip to the registered WidgetButton so its
-    // icon can close Drawer or switch to another Omarchy popup in one click.
+    // icon can close SidePanel or switch to another Omarchy popup in one click.
     MouseArea {
       id: surfaceClickForwarder
       anchors.fill: parent
@@ -1031,17 +1031,17 @@ Item {
     Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(-1) }
 
     Rectangle {
-      id: drawerBody
+      id: sidePanelBody
       anchors.fill: parent
       z: 1
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
-        + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.drawerExtent) : 0)
+        + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
-        + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.drawerExtent) : 0)
+        + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
-        + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.drawerExtent) : 0)
+        + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
-        + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.drawerExtent) : 0)
+        + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
       border.width: root.reservesSpace || root.transparentBackground ? 0 : 1
@@ -1226,7 +1226,7 @@ Item {
             Rectangle {
               id: removePageButton
               visible: root.editing
-              enabled: root.drawerPages.length > 1
+              enabled: root.sidePanelPages.length > 1
               anchors.right: addButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
@@ -1319,7 +1319,7 @@ Item {
             orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
             clip: true
             // A plugin without its own Flickable must still let its oversized
-            // panel scroll in Drawer's viewport. Nested Flickables consume the
+            // panel scroll in SidePanel's viewport. Nested Flickables consume the
             // wheel first, so their local scrolling is preserved.
             interactive: root.resizingId === "" && root.draggedId === ""
             spacing: Style.space(7)
@@ -1345,7 +1345,7 @@ Item {
               z: root.draggedId === pluginId ? 3 : 1
 
               function focusPanel() {
-                if (pageLoader.item && typeof pageLoader.item.drawerFocus === "function") pageLoader.item.drawerFocus()
+                if (pageLoader.item && typeof pageLoader.item.sidePanelFocus === "function") pageLoader.item.sidePanelFocus()
                 else forceActiveFocus()
               }
 
@@ -1538,7 +1538,7 @@ Item {
                             ? root.adaptationError(pluginRow.plugin)
                             : (root.canAdapt(pluginRow.plugin)
                               ? "Preparing embedded panel..."
-                              : "This plugin does not support embedding in Drawer.")))
+                              : "This plugin does not support embedding in the side panel.")))
                       color: root.foreground
                       opacity: 0.65
                       font.family: Style.font.family
@@ -1608,7 +1608,7 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(8)
               Repeater {
-                model: root.drawerPages
+                model: root.sidePanelPages
                 delegate: Rectangle {
                   required property int index
                   width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
@@ -1663,7 +1663,7 @@ Item {
       }
 
       Rectangle {
-        id: drawerResizeHandle
+        id: sidePanelResizeHandle
         visible: root.editing
         width: Math.round(root.verticalEdge ? Style.space(12) : Style.space(48))
         height: Math.round(root.verticalEdge ? Style.space(48) : Style.space(12))
@@ -1673,23 +1673,23 @@ Item {
         y: root.verticalEdge
           ? (parent.height - height) / 2
           : (root.edge === "top" ? parent.height - height : 0)
-        color: drawerResizeMouse.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
+        color: sidePanelResizeMouse.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
         z: 9
 
         MouseArea {
-          id: drawerResizeMouse
+          id: sidePanelResizeMouse
           anchors.fill: parent
           hoverEnabled: true
           preventStealing: true
           cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
           onPressed: function(mouse) {
-            root.beginDrawerResize(root.resizePosition(drawerResizeHandle, mouse.x, mouse.y))
+            root.beginSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
           }
           onPositionChanged: function(mouse) {
-            root.updateDrawerResize(root.resizePosition(drawerResizeHandle, mouse.x, mouse.y))
+            root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
           }
-          onReleased: root.finishDrawerResize()
-          onCanceled: function() { root.resizingDrawer = false }
+          onReleased: root.finishSidePanelResize()
+          onCanceled: function() { root.resizingSidePanel = false }
         }
       }
     }
@@ -1795,7 +1795,7 @@ Item {
                 anchors.rightMargin: Style.space(10)
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Style.space(6)
-                text: modelData.enabled ? String(modelData.description) : "Enable and add to Drawer"
+                text: modelData.enabled ? String(modelData.description) : "Enable and add to side panel"
                 color: root.foreground
                 opacity: 0.56
                 font.family: Style.font.family
@@ -1839,7 +1839,7 @@ Item {
 
     Item {
       id: settingsPage
-      anchors.fill: drawerBody
+      anchors.fill: sidePanelBody
       visible: root.settingsOpen
       z: 11
 
@@ -1856,7 +1856,7 @@ Item {
               id: settingsTitle
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: "DRAWER"
+              text: "SIDE PANEL"
               color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
@@ -1939,7 +1939,7 @@ Item {
                 MouseArea {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: root.persistDrawerSetting("edge", modelData.edge)
+                  onClicked: root.persistSidePanelSetting("edge", modelData.edge)
                 }
               }
             }
@@ -1982,7 +1982,7 @@ Item {
                 MouseArea {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: root.persistDrawerSetting("layoutMode", modelData.mode)
+                  onClicked: root.persistSidePanelSetting("layoutMode", modelData.mode)
                 }
               }
             }

@@ -2,4 +2,4 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-exec python3 "$script_dir/../lib/omarchy_drawer_adapter.py" "$@"
+exec python3 "$script_dir/../lib/omarchy_side_panel_adapter.py" "$@"

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Embed the large family of ordinary Omarchy bar panels in Drawer without
+Embed the large family of ordinary Omarchy bar panels in Side Panel without
 modifying their installed source or asking every plugin author to rewrite a
 panel.
 
@@ -20,17 +20,17 @@ Bluetooth and the bar-widget-plus-panel layout used by Weather and Clock.
 
 ## Transformation
 
-`bin/omarchy-drawer-adapt` copies the complete source directory to an immutable
-fingerprinted path below `$XDG_CACHE_HOME/omarchy-drawer/`. It never removes or
+`bin/omarchy-side-panel-adapt` copies the complete source directory to an immutable
+fingerprinted path below `$XDG_CACHE_HOME/omarchy-side-panel/`. It never removes or
 reuses a caller-selected output directory. Only the copied panel source is
 rewritten:
 
-1. `KeyboardPanel` becomes the local `DrawerPanelHost` component.
-2. Its new host fills Drawer rather than mapping a `PanelWindow`.
-3. A `drawerHost` property is added to the root `Panel`.
+1. `KeyboardPanel` becomes the local `SidePanelHost` component.
+2. Its new host fills Side Panel rather than mapping a `PanelWindow`.
+3. A `sidePanelHost` property is added to the root `Panel`.
 4. The original `close()` implementation is not rewritten. On a panel-originated
-   close, `DrawerPanelHost` notifies Drawer after the original cleanup runs. On
-   a Drawer-originated close, Drawer invokes that original `close()` exactly
+    close, `SidePanelHost` notifies Side Panel after the original cleanup runs. On
+    a Side Panel-originated close, Side Panel invokes that original `close()` exactly
    once.
 5. Syntactically identified `IpcHandler` and bar-button instances become inert
    local shims, and the inherited `Panel` IPC handler is disabled.
@@ -42,7 +42,7 @@ window types rather than applying a best-effort transformation.
 
 ## Runtime Contract
 
-Drawer injects the active Omarchy bar, the plugin's native settings when they
+Side Panel injects the active Omarchy bar, the plugin's native settings when they
 can be resolved from its live widget, service singleton, and its own host
 reference into the loaded copied panel. It then calls the panel's existing
 `open()` method. Existing model code, controls, timers, and cleanup logic
@@ -51,7 +51,7 @@ continue to run from the copied panel.
 The source panel's bar button remains live in the actual Omarchy bar. The copied
 button and copied IPC endpoints become inert shims so duplicate handlers cannot
 race for the same target. Copied panel models and timers are still independent;
-plugin authors should prefer an explicit `drawerPage` for expensive or shared
+plugin authors should prefer an explicit `sidePanelPage` for expensive or shared
 background work.
 
 ## Non-goals
@@ -59,8 +59,8 @@ background work.
 This is source adaptation, not arbitrary window embedding. A plugin that makes
 its own `PanelWindow`, `PopupWindow`, overlay, or custom window role remains a
 separate Wayland surface. Wayland does not permit taking that mapped surface and
-placing it under Drawer. Such plugins must use native fallback or publish an
-explicit `drawerPage`.
+placing it under Side Panel. Such plugins must use native fallback or publish an
+explicit `sidePanelPage`.
 
 ## Verification
 

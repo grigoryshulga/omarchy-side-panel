@@ -1,17 +1,17 @@
 import QtQuick
 import QtTest
-import "../../DrawerModel.js" as DrawerModel
+import "../../SidePanelModel.js" as SidePanelModel
 
 TestCase {
-  name: "DrawerModel"
+  name: "SidePanelModel"
 
   function resolve(item) { return item.id === "alias" ? "resolved" : item.id }
 
   function test_normalize_deduplicates_and_canonicalizes_height() {
-    var items = DrawerModel.normalize([
+    var items = SidePanelModel.normalize([
       { id: "alias", height: 13.5 },
       { id: "resolved", height: -4 },
-      { id: "gshulga.drawer" },
+      { id: "gshulga.side-panel" },
       { id: "", height: 100 }
     ], resolve)
     compare(items.length, 1)
@@ -21,12 +21,12 @@ TestCase {
   }
 
   function test_pages_preserve_names_and_migrate_the_legacy_plugin_list() {
-    var legacy = DrawerModel.pagesFromSettings({ plugins: [{ id: "one" }] }, [], resolve)
+    var legacy = SidePanelModel.pagesFromSettings({ plugins: [{ id: "one" }] }, [], resolve)
     compare(legacy.length, 1)
     compare(legacy[0].title, "Plugins")
     compare(legacy[0].items[0].id, "one")
 
-    var pages = DrawerModel.pagesFromSettings({ pages: [{ title: "Work", items: [{ id: "one" }] }, { items: [{ id: "one" }] }] }, [], resolve)
+    var pages = SidePanelModel.pagesFromSettings({ pages: [{ title: "Work", items: [{ id: "one" }] }, { items: [{ id: "one" }] }] }, [], resolve)
     compare(pages.length, 2)
     compare(pages[0].title, "Work")
     compare(pages[1].title, "Page 2")
@@ -35,18 +35,18 @@ TestCase {
 
   function test_move_and_resize_are_immutable() {
     var source = [{ id: "one", height: 0 }, { id: "two", height: 0 }, { id: "three", height: 0 }]
-    var moved = DrawerModel.move(source, "one", "three", true)
+    var moved = SidePanelModel.move(source, "one", "three", true)
     compare(moved.map(function(item) { return item.id }).join(","), "two,three,one")
-    compare(DrawerModel.move(source, "three", "one", false).map(function(item) { return item.id }).join(","), "three,one,two")
-    compare(DrawerModel.move(source, "two", "three", false).map(function(item) { return item.id }).join(","), "one,two,three")
+    compare(SidePanelModel.move(source, "three", "one", false).map(function(item) { return item.id }).join(","), "three,one,two")
+    compare(SidePanelModel.move(source, "two", "three", false).map(function(item) { return item.id }).join(","), "one,two,three")
     compare(source[0].id, "one")
-    compare(DrawerModel.resizeHeight(200, 10, -1000, 5, 5), 5)
-    compare(DrawerModel.resizeHeight(200, 10, 333, 5, 5), 525)
+    compare(SidePanelModel.resizeHeight(200, 10, -1000, 5, 5), 5)
+    compare(SidePanelModel.resizeHeight(200, 10, 333, 5, 5), 525)
   }
 
   function test_persisted_entry_uses_only_named_pages() {
-    var entry = DrawerModel.persistedEntry(
-      { id: "gshulga.drawer", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left", transparentBackground: true },
+    var entry = SidePanelModel.persistedEntry(
+      { id: "gshulga.side-panel", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left", transparentBackground: true },
       [{ title: "Main", items: [{ id: "one" }] }]
     )
     compare(entry.edge, "left")

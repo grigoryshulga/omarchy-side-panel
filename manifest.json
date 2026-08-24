@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "gshulga.drawer",
-  "name": "Drawer",
+  "id": "gshulga.side-panel",
+  "name": "Side Panel",
   "version": "0.1.0",
   "author": "gshulga",
-  "description": "A configurable edge drawer that hosts plugin pages and launches standard Omarchy panels.",
+  "description": "A configurable edge side panel that hosts plugin pages and launches standard Omarchy panels.",
   "license": "MIT",
   "kinds": ["bar-widget"],
   "keepLoaded": true,
@@ -12,8 +12,8 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Drawer",
-    "description": "An edge drawer for secondary plugins",
+    "displayName": "Side Panel",
+    "description": "An edge side panel for secondary plugins",
     "category": "System",
     "defaultSection": "left",
     "allowMultiple": false,
@@ -26,16 +26,16 @@
       {
         "key": "edge",
         "type": "enum",
-        "label": "Drawer edge",
-        "description": "The screen edge from which the drawer opens.",
+        "label": "Side panel edge",
+        "description": "The screen edge from which the side panel opens.",
         "options": ["left", "right", "top", "bottom"],
         "defaultValue": "left"
       },
       {
         "key": "layoutMode",
         "type": "enum",
-        "label": "Drawer layout",
-        "description": "Overlay windows or reserve screen space while Drawer is open.",
+        "label": "Side panel layout",
+        "description": "Overlay windows or reserve screen space while the side panel is open.",
         "options": ["overlay", "reserve"],
         "defaultValue": "overlay"
       },
@@ -43,7 +43,7 @@
         "key": "transparentBackground",
         "type": "boolean",
         "label": "Transparent background",
-        "description": "Use a translucent Drawer background.",
+        "description": "Use a translucent side-panel background.",
         "defaultValue": false
       }
     ]

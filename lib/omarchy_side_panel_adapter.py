@@ -1,4 +1,4 @@
-"""Build safe, disposable Drawer adaptations of standard Omarchy panels."""
+"""Build safe, disposable SidePanel adaptations of standard Omarchy panels."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from pathlib import Path
 
 
 class AdaptationError(Exception):
-    """The source does not satisfy Drawer's deliberately narrow contract."""
+    """The source does not satisfy SidePanel's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "drawer-adapter-v7"
+ADAPTER_VERSION = "side-panel-adapter-v1"
 
 
 @dataclass(frozen=True)
@@ -162,26 +162,26 @@ def transform_qml(source: str) -> str:
         raise AdaptationError("expected exactly one standard KeyboardPanel")
     host = hosts[0]
 
-    if direct_property(token_list, root, "drawerHost"):
-        raise AdaptationError("root Panel already declares drawerHost")
-    if direct_property(token_list, host, "drawerHost") or direct_property(token_list, host, "page"):
-        raise AdaptationError("KeyboardPanel uses reserved Drawer host properties")
+    if direct_property(token_list, root, "sidePanelHost"):
+        raise AdaptationError("root Panel already declares sidePanelHost")
+    if direct_property(token_list, host, "sidePanelHost") or direct_property(token_list, host, "page"):
+        raise AdaptationError("KeyboardPanel uses reserved SidePanel host properties")
 
     replacements: list[tuple[int, int, str]] = [
         (
             root.open_token.end,
             root.open_token.end,
-            "\n  property var drawerHost: null"
-            "\n  property var drawerFocusTarget: null"
-            "\n  function drawerFocus() { if (drawerFocusTarget) drawerFocusTarget.forceActiveFocus() }",
+            "\n  property var sidePanelHost: null"
+            "\n  property var sidePanelFocusTarget: null"
+            "\n  function sidePanelFocus() { if (sidePanelFocusTarget) sidePanelFocusTarget.forceActiveFocus() }",
         ),
-        (host.type_token.start, host.type_token.end, "DrawerPanelHost"),
+        (host.type_token.start, host.type_token.end, "SidePanelHost"),
         (
             host.open_token.end,
             host.open_token.end,
-            f"\n    anchors.fill: parent\n    drawerHost: {root_id}.drawerHost\n    page: {root_id}"
-            f"\n    onFocusTargetChanged: {root_id}.drawerFocusTarget = focusTarget"
-            f"\n    Component.onCompleted: {root_id}.drawerFocusTarget = focusTarget",
+            f"\n    anchors.fill: parent\n    sidePanelHost: {root_id}.sidePanelHost\n    page: {root_id}"
+            f"\n    onFocusTargetChanged: {root_id}.sidePanelFocusTarget = focusTarget"
+            f"\n    Component.onCompleted: {root_id}.sidePanelFocusTarget = focusTarget",
         ),
     ]
 
@@ -200,9 +200,9 @@ def transform_qml(source: str) -> str:
         if not contains(root, node):
             continue
         if node.type_name == "IpcHandler":
-            replacements.append((node.type_token.start, node.type_token.end, "DrawerDisabledIpc"))
+            replacements.append((node.type_token.start, node.type_token.end, "SidePanelDisabledIpc"))
         elif node.type_name in ("BarIconButton", "WidgetButton"):
-            replacements.append((node.type_token.start, node.type_token.end, "DrawerHiddenBarButton"))
+            replacements.append((node.type_token.start, node.type_token.end, "SidePanelHiddenBarButton"))
 
     return replace_ranges(source, replacements)
 
@@ -286,7 +286,7 @@ def safe_directory(path: Path) -> None:
 
 
 def completed_artifact(destination: Path, generated_source: Path, fingerprint: str) -> bool:
-    marker = destination / ".omarchy-drawer-adapted"
+    marker = destination / ".omarchy-side-panel-adapted"
     if destination.is_symlink() or generated_source.is_symlink() or marker.is_symlink():
         return False
     if not destination.is_dir() or not generated_source.is_file() or not marker.is_file():
@@ -325,7 +325,7 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
     if destination.exists() or destination.is_symlink():
         if completed_artifact(destination, generated_source, fingerprint):
             return generated_source
-        raise AdaptationError("existing cache destination is not a Drawer artifact")
+        raise AdaptationError("existing cache destination is not a SidePanel artifact")
 
     staging_parent = cache_root / ".staging"
     safe_directory(staging_parent)
@@ -336,12 +336,12 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
         target = output / entry_source.relative_to(source_dir)
         target.chmod(target.stat().st_mode | stat.S_IWUSR)
         target.write_text(transformed, encoding="utf-8")
-        for helper in ("DrawerPanelHost.qml", "DrawerDisabledIpc.qml", "DrawerHiddenBarButton.qml"):
+        for helper in ("SidePanelHost.qml", "SidePanelDisabledIpc.qml", "SidePanelHiddenBarButton.qml"):
             source_helper = adapter_dir / helper
             if not source_helper.is_file():
                 raise AdaptationError(f"adapter helper is missing: {helper}")
             shutil.copy2(source_helper, output / helper)
-        (output / ".omarchy-drawer-adapted").write_text(
+        (output / ".omarchy-side-panel-adapted").write_text(
             f"{ADAPTER_VERSION}\n{fingerprint}\n", encoding="utf-8"
         )
 
@@ -373,10 +373,10 @@ def main() -> int:
             Path(arguments.adapter_dir),
         )
     except AdaptationError as error:
-        print(f"omarchy-drawer-adapt: {error}", file=sys.stderr)
+        print(f"omarchy-side-panel-adapt: {error}", file=sys.stderr)
         return 1
     except OSError as error:
-        print(f"omarchy-drawer-adapt: filesystem error: {error}", file=sys.stderr)
+        print(f"omarchy-side-panel-adapt: filesystem error: {error}", file=sys.stderr)
         return 1
     print(output.as_uri())
     return 0

@@ -9,29 +9,29 @@ adapt() {
   local source_dir=$1
   local entry_point=$2
   local plugin_id=$3
-  bash "$project_dir/bin/omarchy-drawer-adapt" "$source_dir" "$entry_point" "$cache_dir" "$plugin_id" "$project_dir"
+  bash "$project_dir/bin/omarchy-side-panel-adapt" "$source_dir" "$entry_point" "$cache_dir" "$plugin_id" "$project_dir"
 }
 
 bluetooth_output=$(adapt /usr/share/omarchy/shell/plugins/panels/bluetooth Panel.qml omarchy.bluetooth)
 bluetooth_panel=${bluetooth_output#file://}
 test -f "$bluetooth_panel"
-test -f "$(dirname "$bluetooth_panel")/DrawerPanelHost.qml"
-test -f "$(dirname "$bluetooth_panel")/DrawerDisabledIpc.qml"
-test -f "$(dirname "$bluetooth_panel")/DrawerHiddenBarButton.qml"
-grep -q 'property var drawerHost: null' "$bluetooth_panel"
-grep -q 'DrawerPanelHost {' "$bluetooth_panel"
+test -f "$(dirname "$bluetooth_panel")/SidePanelHost.qml"
+test -f "$(dirname "$bluetooth_panel")/SidePanelDisabledIpc.qml"
+test -f "$(dirname "$bluetooth_panel")/SidePanelHiddenBarButton.qml"
+grep -q 'property var sidePanelHost: null' "$bluetooth_panel"
+grep -q 'SidePanelHost {' "$bluetooth_panel"
 grep -q 'anchors.fill: parent' "$bluetooth_panel"
-grep -q 'drawerHost: root.drawerHost' "$bluetooth_panel"
-grep -q 'DrawerDisabledIpc {' "$bluetooth_panel"
-grep -q 'DrawerHiddenBarButton {' "$bluetooth_panel"
-! grep -q 'function drawerDeactivate()' "$bluetooth_panel"
+grep -q 'sidePanelHost: root.sidePanelHost' "$bluetooth_panel"
+grep -q 'SidePanelDisabledIpc {' "$bluetooth_panel"
+grep -q 'SidePanelHiddenBarButton {' "$bluetooth_panel"
+! grep -q 'function sidePanelDeactivate()' "$bluetooth_panel"
 ! grep -q 'KeyboardPanel {' "$bluetooth_panel"
 qmllint -I /usr/share/omarchy/shell "$bluetooth_panel"
 
 weather_output=$(adapt /usr/share/omarchy/shell/plugins/panels/weather BarWidget.qml omarchy.weather)
 weather_panel=${weather_output#file://}
 test -f "$weather_panel"
-grep -q 'DrawerPanelHost {' "$weather_panel"
+grep -q 'SidePanelHost {' "$weather_panel"
 ! grep -q 'KeyboardPanel {' "$weather_panel"
 qmllint -I /usr/share/omarchy/shell "$weather_panel"
 

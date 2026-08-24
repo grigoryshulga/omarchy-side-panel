@@ -1,7 +1,7 @@
 import QtQuick
 
 // Drop-in host for a transformed standard Omarchy KeyboardPanel. It preserves
-// the panel's content tree but renders it inside Drawer rather than mapping a
+// the panel's content tree but renders it inside SidePanel rather than mapping a
 // separate layer-shell surface.
 Item {
   id: root
@@ -9,7 +9,7 @@ Item {
   property Item anchorItem: null
   property var owner: null
   property var bar: null
-  property var drawerHost: null
+  property var sidePanelHost: null
   property var page: null
   property bool open: true
   property Item focusTarget: null
@@ -47,15 +47,15 @@ Item {
 
   visible: open
   // This sits above the embedded panel's key catcher. Escape must close the
-  // containing Drawer rather than only changing the panel's local state.
+  // containing SidePanel rather than only changing the panel's local state.
   Keys.priority: Keys.BeforeItem
   Keys.onPressed: function(event) {
-    if (event.key === Qt.Key_Escape && root.open && drawerHost && typeof drawerHost.handleEscape === "function") {
-      drawerHost.handleEscape()
+    if (event.key === Qt.Key_Escape && root.open && sidePanelHost && typeof sidePanelHost.handleEscape === "function") {
+      sidePanelHost.handleEscape()
       event.accepted = true
     } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)
-        && drawerHost && typeof drawerHost.focusKeyboardPlugin === "function") {
-      drawerHost.focusKeyboardPlugin((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+        && sidePanelHost && typeof sidePanelHost.focusKeyboardPlugin === "function") {
+      sidePanelHost.focusKeyboardPlugin((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
       event.accepted = true
     }
   }
@@ -64,12 +64,12 @@ Item {
       Qt.callLater(function() {
         if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
       })
-    } else if (!open && drawerHost && page && typeof drawerHost.panelClosed === "function") {
+    } else if (!open && sidePanelHost && page && typeof sidePanelHost.panelClosed === "function") {
       // Native panels commonly hide themselves before summoning another
-      // window. Defer Drawer teardown so the summon call can still run.
+      // window. Defer SidePanel teardown so the summon call can still run.
       Qt.callLater(function() {
-        if (!root.open && root.drawerHost && root.page && typeof root.drawerHost.panelClosed === "function")
-          root.drawerHost.panelClosed(root.page)
+        if (!root.open && root.sidePanelHost && root.page && typeof root.sidePanelHost.panelClosed === "function")
+          root.sidePanelHost.panelClosed(root.page)
       })
     }
   }

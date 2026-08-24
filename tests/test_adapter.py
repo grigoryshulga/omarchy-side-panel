@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("adapter", ROOT / "lib" / "omarchy_drawer_adapter.py")
+SPEC = importlib.util.spec_from_file_location("adapter", ROOT / "lib" / "omarchy_side_panel_adapter.py")
 adapter = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = adapter
@@ -32,12 +32,12 @@ class AdapterTests(unittest.TestCase):
 
     def test_transforms_only_syntax_tokens_and_preserves_nested_close(self):
         transformed = adapter.transform_qml(PANEL + "// KeyboardPanel { root.controller.hide()\n")
-        self.assertIn("property var drawerHost: null", transformed)
-        self.assertIn("DrawerDisabledIpc { function close()", transformed)
-        self.assertIn("DrawerHiddenBarButton {", transformed)
-        self.assertIn("DrawerPanelHost {\n    anchors.fill: parent\n    drawerHost: root.drawerHost", transformed)
-        self.assertIn("function drawerFocus()", transformed)
-        self.assertIn("onFocusTargetChanged: root.drawerFocusTarget = focusTarget", transformed)
+        self.assertIn("property var sidePanelHost: null", transformed)
+        self.assertIn("SidePanelDisabledIpc { function close()", transformed)
+        self.assertIn("SidePanelHiddenBarButton {", transformed)
+        self.assertIn("SidePanelHost {\n    anchors.fill: parent\n    sidePanelHost: root.sidePanelHost", transformed)
+        self.assertIn("function sidePanelFocus()", transformed)
+        self.assertIn("onFocusTargetChanged: root.sidePanelFocusTarget = focusTarget", transformed)
         self.assertIn("function close() { root.close() }", transformed)
         self.assertIn("// KeyboardPanel { root.controller.hide()", transformed)
 
@@ -69,8 +69,8 @@ class AdapterTests(unittest.TestCase):
             output = adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
             self.assertTrue(output.is_file())
             self.assertEqual((source / "Panel.qml").read_text(), PANEL)
-            self.assertTrue((output.parent / "DrawerPanelHost.qml").is_file())
-            self.assertIn("property bool dimmed", (output.parent / "DrawerHiddenBarButton.qml").read_text())
+            self.assertTrue((output.parent / "SidePanelHost.qml").is_file())
+            self.assertIn("property bool dimmed", (output.parent / "SidePanelHiddenBarButton.qml").read_text())
             self.assertEqual(output, adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT))
 
     def test_build_rebases_relative_imports_outside_the_plugin(self):
@@ -134,7 +134,7 @@ Panel {
             target = cache / namespace / fingerprint
             target.mkdir(parents=True)
             (target / "Panel.qml").write_text("Item {}")
-            with self.assertRaisesRegex(adapter.AdaptationError, "not a Drawer artifact"):
+            with self.assertRaisesRegex(adapter.AdaptationError, "not a SidePanel artifact"):
                 adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
 
 
