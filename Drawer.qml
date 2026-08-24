@@ -49,7 +49,6 @@ Item {
   property real drawerResizePreview: 0
   property int keyboardPluginIndex: -1
   property string hoveredPanelId: ""
-  property string activePanelId: ""
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
@@ -618,7 +617,6 @@ Item {
     editing = false
     expandedId = ""
     hoveredPanelId = ""
-    activePanelId = ""
     cancelResize()
     cancelDrag()
     closing = false
@@ -830,10 +828,10 @@ Item {
     Rectangle {
       id: drawerBody
       anchors.fill: parent
-      anchors.topMargin: root.barPosition === "top" ? root.barInset : 0
-      anchors.rightMargin: root.barPosition === "right" ? root.barInset : 0
-      anchors.bottomMargin: root.barPosition === "bottom" ? root.barInset : 0
-      anchors.leftMargin: root.barPosition === "left" ? root.barInset : 0
+      anchors.topMargin: !root.reservesSpace && root.barPosition === "top" ? root.barInset : 0
+      anchors.rightMargin: !root.reservesSpace && root.barPosition === "right" ? root.barInset : 0
+      anchors.bottomMargin: !root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0
+      anchors.leftMargin: !root.reservesSpace && root.barPosition === "left" ? root.barInset : 0
       color: root.transparentBackground ? "transparent" : Color.popups.background
       border.width: 1
       border.color: root.transparentBackground ? "transparent" : Color.popups.border
@@ -1136,16 +1134,12 @@ Item {
                   anchors.topMargin: Style.space(5)
                   radius: Style.cornerRadius / 2
                   color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
-                  border.width: 1
-                  border.color: pluginRow.index === root.keyboardPluginIndex || root.activePanelId === pluginRow.pluginId
-                    ? Color.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
 
                   HoverHandler {
                     id: panelHover
                     onHoveredChanged: {
                       if (hovered) {
                         root.hoveredPanelId = pluginRow.pluginId
-                        root.activePanelId = pluginRow.pluginId
                       } else if (root.hoveredPanelId === pluginRow.pluginId) {
                         root.hoveredPanelId = ""
                       }

@@ -42,6 +42,15 @@ Item {
   }
 
   visible: open
+  // This sits above the embedded panel's key catcher. Escape must close the
+  // containing Drawer rather than only changing the panel's local state.
+  Keys.priority: Keys.BeforeItem
+  Keys.onPressed: function(event) {
+    if (event.key === Qt.Key_Escape && root.open && drawerHost && typeof drawerHost.handleEscape === "function") {
+      drawerHost.handleEscape()
+      event.accepted = true
+    }
+  }
   onOpenChanged: {
     if (open && focusTarget) {
       Qt.callLater(function() {
