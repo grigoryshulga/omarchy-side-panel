@@ -1755,7 +1755,7 @@ Item {
 
             delegate: Rectangle {
               required property var modelData
-              width: parent.width
+              width: ListView.view ? ListView.view.width : 0
               height: Math.round(Style.space(48))
               radius: Style.cornerRadius / 2
               color: catalogRowHover.containsMouse
