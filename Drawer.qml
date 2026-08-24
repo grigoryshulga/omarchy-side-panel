@@ -1239,7 +1239,10 @@ Item {
             width: parent.width
             orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
             clip: true
-            interactive: root.resizingId === "" && root.draggedId === "" && root.hoveredPanelId === ""
+            // A plugin without its own Flickable must still let its oversized
+            // panel scroll in Drawer's viewport. Nested Flickables consume the
+            // wheel first, so their local scrolling is preserved.
+            interactive: root.resizingId === "" && root.draggedId === ""
             spacing: Style.space(7)
             model: root.pluginItems
             // Stack mode keeps every embedded panel instantiated; lifecycle is
@@ -1406,13 +1409,18 @@ Item {
                     ? Color.popups.background
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
                   border.width: 1
-                  border.color: pluginRow.index === root.keyboardPluginIndex ? Color.accent : Color.popups.border
+                  border.color: pluginRow.index === root.keyboardPluginIndex
+                    ? Color.accent
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
 
                   HoverHandler {
                     id: panelHover
                     onHoveredChanged: {
                       if (hovered) {
                         root.hoveredPanelId = pluginRow.pluginId
+                        // Hover selects the panel for subsequent keyboard navigation
+                        // without stealing active focus from a plugin control.
+                        root.keyboardPluginIndex = pluginRow.index
                       } else if (root.hoveredPanelId === pluginRow.pluginId) {
                         root.hoveredPanelId = ""
                       }
