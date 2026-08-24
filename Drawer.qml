@@ -737,9 +737,14 @@ Item {
   function panelClosed(page) {
     if (closing || suppressPanelClose || !opened) return
     var nextPanels = []
+    var wasActive = false
     for (var i = 0; i < activePanels.length; i++) {
-      if (activePanels[i] !== page) nextPanels.push(activePanels[i])
+      if (activePanels[i] === page) wasActive = true
+      else nextPanels.push(activePanels[i])
     }
+    // Panel hosts report close asynchronously. A panel removed during edit or
+    // page navigation must not be mistaken for a user-requested drawer close.
+    if (!wasActive) return
     activePanels = nextPanels
     close()
   }
