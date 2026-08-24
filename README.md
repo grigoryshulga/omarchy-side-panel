@@ -140,6 +140,8 @@ Item {
 - `Escape` while the add catalog is open: close the catalog.
 - `Ctrl+Tab`: focus the next embedded plugin panel.
 - `Ctrl+Shift+Tab`: focus the previous embedded plugin panel.
+- `Alt+Right` / `Alt+Left`: next / previous Drawer page.
+- `Alt+Scroll Up` / `Alt+Scroll Down`: next / previous Drawer page.
 - Once a panel is focused, its keyboard controls, including arrow-key navigation,
   receive input directly.
 

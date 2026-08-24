@@ -175,6 +175,11 @@ Item {
     if (opened) adaptPreferredPanels()
   }
 
+  function movePage(delta) {
+    if (drawerPages.length < 2) return
+    selectPage((currentPage + delta + drawerPages.length) % drawerPages.length)
+  }
+
   function addPage() {
     var nextPages = copyPages(drawerPages)
     nextPages.push({ title: "Page " + (nextPages.length + 1), items: [] })
@@ -1008,6 +1013,8 @@ Item {
     Shortcut { sequence: "Alt+7"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(6) }
     Shortcut { sequence: "Alt+8"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(7) }
     Shortcut { sequence: "Alt+9"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(8) }
+    Shortcut { sequence: "Alt+Right"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.movePage(1) }
+    Shortcut { sequence: "Alt+Left"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.movePage(-1) }
     Shortcut { sequence: "Ctrl+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(-1) }
 
@@ -1032,6 +1039,15 @@ Item {
         z: -1
         onWheel: function(wheel) {
           root.scrollPluginList(wheel.angleDelta.x, wheel.angleDelta.y)
+          wheel.accepted = true
+        }
+      }
+
+      WheelHandler {
+        acceptedModifiers: Qt.AltModifier
+        onWheel: function(wheel) {
+          if (wheel.angleDelta.y > 0) root.movePage(1)
+          else if (wheel.angleDelta.y < 0) root.movePage(-1)
           wheel.accepted = true
         }
       }
