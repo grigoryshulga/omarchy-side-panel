@@ -1077,7 +1077,7 @@ Item {
               id: title
               visible: !root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? addButton.left : editButton.left
+              anchors.right: root.editing ? removePageButton.left : editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
@@ -1099,7 +1099,7 @@ Item {
               id: pageTitleInput
               visible: root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? addButton.left : editButton.left
+              anchors.right: root.editing ? removePageButton.left : editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
@@ -1169,19 +1169,36 @@ Item {
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              width: Math.round(Style.space(28))
-              height: width
+              readonly property bool expanded: addHover.containsMouse
+              width: expanded ? Math.round(Style.space(118)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
               radius: height / 2
+              clip: true
               color: addHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                 : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
 
-              Text {
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
                 anchors.centerIn: parent
-                text: "\uf067"
-                color: root.chromeForeground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
+                spacing: Style.space(5)
+                Text {
+                  text: "+"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                }
+                Text {
+                  visible: addButton.expanded
+                  text: "Add Plugin"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
               }
 
               MouseArea {
@@ -1190,6 +1207,55 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.catalogOpen = true
+              }
+            }
+
+            Rectangle {
+              id: removePageButton
+              visible: root.editing
+              enabled: root.drawerPages.length > 1
+              anchors.right: addButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              readonly property bool expanded: removePageHover.containsMouse
+              width: expanded ? Math.round(Style.space(126)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
+              radius: height / 2
+              clip: true
+              opacity: enabled ? 1 : 0.42
+              color: removePageHover.containsMouse
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
+                anchors.centerIn: parent
+                spacing: Style.space(5)
+                Text {
+                  text: "\uf1f8"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+                Text {
+                  visible: removePageButton.expanded
+                  text: "Remove page"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              MouseArea {
+                id: removePageHover
+                anchors.fill: parent
+                enabled: removePageButton.enabled
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.removeCurrentPage()
               }
             }
 
@@ -1908,16 +1974,6 @@ Item {
                 }
               }
             }
-          }
-
-          Text {
-            visible: root.drawerPages.length > 1
-            text: "Delete current page"
-            color: root.chromeForeground
-            opacity: 0.7
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
           }
 
       }
