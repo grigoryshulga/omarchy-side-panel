@@ -63,6 +63,10 @@ Item {
   readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? drawerWidth : drawerHeight))
   readonly property real drawerExtent: resizingDrawer ? drawerResizePreview : configuredExtent
   readonly property color foreground: Color.popups.text
+  readonly property color transparentTextForeground: Color.bar.text
+  readonly property color transparentContrastForeground: Color.background
+  property color transparentForeground: transparentTextForeground
+  readonly property color chromeForeground: transparentBackground ? transparentForeground : foreground
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
@@ -73,6 +77,36 @@ Item {
     var value = drawerState && drawerState[name] !== undefined ? drawerState[name]
       : (settings ? settings[name] : undefined)
     return value === undefined || value === null ? fallback : value
+  }
+
+  function colorHex(colorValue) {
+    var color = typeof colorValue === "string" ? Qt.color(colorValue) : colorValue
+    function channel(value) {
+      var hex = Math.round(Math.max(0, Math.min(1, value)) * 255).toString(16)
+      return hex.length < 2 ? "0" + hex : hex
+    }
+    return "#" + channel(color.r) + channel(color.g) + channel(color.b)
+  }
+
+  function scheduleTransparentForegroundRefresh() {
+    if (!transparentBackground) {
+      transparentForeground = transparentTextForeground
+      return
+    }
+    transparentForegroundTimer.restart()
+  }
+
+  function refreshTransparentForeground() {
+    if (!transparentBackground || transparentForegroundProc.running) return
+    // Match Bar's wallpaper-sampled contrast choice for Drawer’s own edge.
+    transparentForegroundProc.command = [
+      "omarchy-bar-text-color",
+      edge,
+      String(Math.max(1, Math.round(drawerExtent))),
+      colorHex(transparentTextForeground),
+      colorHex(transparentContrastForeground)
+    ]
+    transparentForegroundProc.running = true
   }
 
   function defaultPluginItems() {
@@ -753,7 +787,15 @@ Item {
       }
     }
   }
-  Component.onCompleted: drawerPages = pagesFromSettings()
+  Component.onCompleted: {
+    drawerPages = pagesFromSettings()
+    scheduleTransparentForegroundRefresh()
+  }
+  onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
+  onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
+  onTransparentContrastForegroundChanged: scheduleTransparentForegroundRefresh()
+  onEdgeChanged: scheduleTransparentForegroundRefresh()
+  onDrawerExtentChanged: scheduleTransparentForegroundRefresh()
 
   FileView {
     id: drawerStateFile
@@ -764,6 +806,30 @@ Item {
     onLoadFailed: Qt.callLater(function() {
       if (root.drawerPages.length > 0) root.persistDrawerState()
     })
+  }
+
+  Timer {
+    id: transparentForegroundTimer
+    interval: 120
+    repeat: false
+    onTriggered: root.refreshTransparentForeground()
+  }
+
+  Process {
+    id: transparentForegroundProc
+    stdout: SplitParser {
+      onRead: function(line) {
+        var value = String(line || "").trim()
+        if (/^#[0-9A-Fa-f]{6}$/.test(value)) root.transparentForeground = value
+      }
+    }
+  }
+
+  FileView {
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/current"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.scheduleTransparentForegroundRefresh()
   }
 
   onOpenedChanged: {
@@ -998,7 +1064,7 @@ Item {
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
-              color: root.foreground
+              color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
               font.bold: true
@@ -1020,7 +1086,7 @@ Item {
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
-              color: root.foreground
+              color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
               font.bold: true
@@ -1042,8 +1108,8 @@ Item {
               width: Math.round(Style.space(28))
               height: width
               radius: height / 2
-              color: settingsHover.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-              Text { anchors.centerIn: parent; text: "\uf013"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              color: settingsHover.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
+              Text { anchors.centerIn: parent; text: "\uf013"; color: root.chromeForeground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
               MouseArea { id: settingsHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = true }
             }
 
@@ -1056,16 +1122,16 @@ Item {
               height: Math.round(Style.space(28))
               radius: height / 2
               color: root.editing
-                ? Style.selectedFillFor(root.foreground, Color.accent)
+                ? Style.selectedFillFor(root.chromeForeground, Color.accent)
                 : (editHover.containsMouse
-                  ? Style.hoverFillFor(root.foreground, Color.accent)
-                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06))
+                  ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
 
               Text {
                 id: editText
                 anchors.centerIn: parent
                 text: root.editing ? "\uf00c" : "\uf044"
-                color: root.foreground
+                color: root.chromeForeground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -1090,16 +1156,16 @@ Item {
               height: Math.round(Style.space(28))
               radius: height / 2
               color: root.pinned
-                ? Style.selectedFillFor(root.foreground, Color.accent)
+                ? Style.selectedFillFor(root.chromeForeground, Color.accent)
                 : (pinHover.containsMouse
-                  ? Style.hoverFillFor(root.foreground, Color.accent)
-                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06))
+                  ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
 
               Text {
                 id: pinText
                 anchors.centerIn: parent
                 text: "\uf08d"
-                color: root.foreground
+                color: root.chromeForeground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -1404,13 +1470,13 @@ Item {
             height: Math.round(Style.space(36))
             radius: height / 2
             color: addHover.containsMouse
-              ? Style.hoverFillFor(root.foreground, Color.accent)
-              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+              ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+              : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
 
             Text {
               anchors.centerIn: parent
               text: "\uf067"
-              color: root.foreground
+              color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
             }
@@ -1444,7 +1510,7 @@ Item {
                   width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
                   height: width
                   radius: width / 2
-                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
                 }
               }
@@ -1456,7 +1522,7 @@ Item {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               text: "\uf067"
-              color: root.foreground
+              color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
@@ -1503,7 +1569,7 @@ Item {
         y: root.verticalEdge
           ? (parent.height - height) / 2
           : (root.edge === "top" ? parent.height - height : 0)
-        color: drawerResizeMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+        color: drawerResizeMouse.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
         z: 9
 
         MouseArea {
