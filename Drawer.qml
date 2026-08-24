@@ -958,7 +958,7 @@ Item {
     MouseArea {
       id: surfaceClickForwarder
       anchors.fill: parent
-      z: -1
+      z: 0
       enabled: root.opened
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
@@ -1021,6 +1021,7 @@ Item {
     Rectangle {
       id: drawerBody
       anchors.fill: parent
+      z: 1
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
         + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.drawerExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
@@ -1119,7 +1120,7 @@ Item {
             Rectangle {
               id: settingsButton
               visible: !root.editing && (titleRowHover.hovered || root.settingsOpen)
-              anchors.right: pinButton.left
+              anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
@@ -1133,7 +1134,7 @@ Item {
             Rectangle {
               id: editButton
               visible: titleRowHover.hovered || root.editing
-              anchors.right: parent.right
+              anchors.right: root.editing ? parent.right : pinButton.left
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
@@ -1262,8 +1263,7 @@ Item {
             Rectangle {
               id: pinButton
               visible: !root.editing && (titleRowHover.hovered || root.pinned)
-              anchors.right: editButton.left
-              anchors.rightMargin: Style.space(6)
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
