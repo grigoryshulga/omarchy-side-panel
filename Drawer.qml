@@ -66,7 +66,7 @@ Item {
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
-  readonly property string statePath: pluginDir + ".drawer-state.json"
+  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/gshulga.drawer.json"
   readonly property var availablePlugins: discoverAvailablePlugins()
 
   function setting(name, fallback) {
