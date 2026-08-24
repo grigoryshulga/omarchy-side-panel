@@ -935,6 +935,13 @@ Item {
       bottom: !root.reservesSpace || root.verticalEdge || root.edge === "bottom"
     }
 
+    // Transparent layer surfaces need an explicit input region; otherwise the
+    // compositor routes clicks outside Drawer directly to the app beneath it.
+    mask: Region {
+      width: surface.width
+      height: surface.height
+    }
+
     implicitWidth: root.verticalEdge
       ? Math.min(root.drawerExtent, screen ? screen.width : root.drawerExtent) : 0
     implicitHeight: root.verticalEdge ? 0
