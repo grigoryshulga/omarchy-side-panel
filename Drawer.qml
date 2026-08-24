@@ -50,6 +50,7 @@ Item {
   property real drawerResizePreview: 0
   property int keyboardPluginIndex: -1
   property string hoveredPanelId: ""
+  property var drawerState: ({})
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
@@ -65,10 +66,12 @@ Item {
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-drawer"
+  readonly property string statePath: pluginDir + ".drawer-state.json"
   readonly property var availablePlugins: discoverAvailablePlugins()
 
   function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
+    var value = drawerState && drawerState[name] !== undefined ? drawerState[name]
+      : (settings ? settings[name] : undefined)
     return value === undefined || value === null ? fallback : value
   }
 
@@ -86,7 +89,9 @@ Item {
   }
 
   function pagesFromSettings() {
-    return DrawerModel.pagesFromSettings(settings, defaultPluginItems(), function(item) {
+    var source = drawerState && Array.isArray(drawerState.pages) && drawerState.pages.length > 0
+      ? drawerState : settings
+    return DrawerModel.pagesFromSettings(source, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
   }
@@ -110,7 +115,9 @@ Item {
     deactivateActivePanels()
     drawerPages = nextPages
     currentPage = Math.max(0, Math.min(nextPages.length - 1, nextPage === undefined ? currentPage : nextPage))
+    persistDrawerState()
     var entry = DrawerModel.persistedEntry(settings, nextPages)
+    settings = entry
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
       bar.shell.updateEntryInline("gshulga.drawer", entry)
   }
@@ -129,6 +136,7 @@ Item {
     currentPage = index
     expandedId = ""
     renamingPage = false
+    persistDrawerState()
     panelEpoch += 1
     if (opened) adaptPreferredPanels()
   }
@@ -197,8 +205,43 @@ Item {
   function persistDrawerSetting(name, value) {
     var entry = DrawerModel.persistedEntry(settings, drawerPages)
     entry[name] = value
+    var overrides = ({})
+    overrides[name] = value
+    persistDrawerState(overrides)
+    settings = entry
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
       bar.shell.updateEntryInline("gshulga.drawer", entry)
+  }
+
+  function persistDrawerState(overrides) {
+    var state = {
+      version: 1,
+      pages: copyPages(drawerPages),
+      currentPage: currentPage
+    }
+    var settingNames = ["edge", "edgeSize", "layoutMode", "transparentBackground"]
+    for (var index = 0; index < settingNames.length; index++) {
+      var name = settingNames[index]
+      var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
+      if (value !== undefined && value !== null) state[name] = value
+    }
+    drawerState = state
+    drawerStateFile.setText(JSON.stringify(state, null, 2) + "\n")
+  }
+
+  function loadDrawerState(raw) {
+    try {
+      var state = JSON.parse(String(raw || ""))
+      if (!state || state.version !== 1 || !Array.isArray(state.pages)) return
+      drawerState = state
+      deactivateActivePanels("state-load")
+      drawerPages = DrawerModel.normalizePages(state.pages, defaultPluginItems(), function(item) {
+        return root.resolvedPluginId(item)
+      })
+      currentPage = Math.max(0, Math.min(drawerPages.length - 1, Number(state.currentPage) || 0))
+    } catch (error) {
+      console.warn("Drawer: cannot load saved state:", error)
+    }
   }
 
   function resizePosition(handle, x, y) {
@@ -679,6 +722,19 @@ Item {
     }
   }
   Component.onCompleted: drawerPages = pagesFromSettings()
+
+  FileView {
+    id: drawerStateFile
+    path: root.statePath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadDrawerState(text())
+    onLoadFailed: Qt.callLater(function() {
+      if (root.drawerPages.length > 0) root.persistDrawerState()
+    })
+    onFileChanged: reload()
+  }
 
   onOpenedChanged: {
     if (bar && popoutOwner) {

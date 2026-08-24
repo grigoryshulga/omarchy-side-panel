@@ -1,3 +1,4 @@
 .qmlcache/
 *.qmlc
 __pycache__/
+.drawer-state.json
