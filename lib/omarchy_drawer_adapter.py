@@ -18,7 +18,7 @@ class AdaptationError(Exception):
     """The source does not satisfy Drawer's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "drawer-adapter-v6"
+ADAPTER_VERSION = "drawer-adapter-v7"
 
 
 @dataclass(frozen=True)
@@ -272,7 +272,7 @@ def rebase_external_relative_imports(source: str, source_dir: Path, entry_source
         target = (entry_source.parent / relative).resolve()
         if not target.is_dir() or is_within(target, source_dir):
             return match.group(0)
-        return f'{match.group("prefix")}{match.group("quote")}{target.as_posix()}{match.group("quote")}{match.group("suffix") or ""}'
+        return f'{match.group("prefix")}{match.group("quote")}{target.as_uri()}{match.group("quote")}{match.group("suffix") or ""}'
 
     return RELATIVE_IMPORT.sub(replace, source)
 

@@ -91,7 +91,7 @@ Panel {
             )
 
             output = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
-            self.assertIn(f'import "{components.as_posix()}" as Components', output.read_text())
+            self.assertIn(f'import "{components.as_uri()}" as Components', output.read_text())
 
     def test_rejects_escape_and_symlinked_source(self):
         with tempfile.TemporaryDirectory() as temporary:
