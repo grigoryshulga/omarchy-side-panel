@@ -17,7 +17,7 @@ class AdaptationError(Exception):
     """The source does not satisfy Drawer's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "drawer-adapter-v3"
+ADAPTER_VERSION = "drawer-adapter-v4"
 
 
 @dataclass(frozen=True)

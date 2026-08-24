@@ -68,6 +68,7 @@ class AdapterTests(unittest.TestCase):
             self.assertTrue(output.is_file())
             self.assertEqual((source / "Panel.qml").read_text(), PANEL)
             self.assertTrue((output.parent / "DrawerPanelHost.qml").is_file())
+            self.assertIn("property bool dimmed", (output.parent / "DrawerHiddenBarButton.qml").read_text())
             self.assertEqual(output, adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT))
 
     def test_rejects_escape_and_symlinked_source(self):
