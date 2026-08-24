@@ -48,6 +48,8 @@ Item {
   property real drawerResizeStartExtent: 0
   property real drawerResizePreview: 0
   property int keyboardPluginIndex: -1
+  property string hoveredPanelId: ""
+  property string activePanelId: ""
 
   readonly property int drawerWidth: Math.round(Style.space(480))
   readonly property int drawerHeight: Math.round(Style.space(420))
@@ -615,11 +617,19 @@ Item {
     catalogOpen = false
     editing = false
     expandedId = ""
+    hoveredPanelId = ""
+    activePanelId = ""
     cancelResize()
     cancelDrag()
     closing = false
   }
   function toggle() { opened ? close() : open() }
+
+  function handleEscape() {
+    if (catalogOpen) catalogOpen = false
+    else if (settingsOpen) settingsOpen = false
+    else close()
+  }
 
   function launchFallback(item) {
     if (!item || !bar || !bar.shell || !pluginEnabled(item)) {
@@ -693,7 +703,44 @@ Item {
     exclusionMode: root.reservesSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
     WlrLayershell.namespace: "gshulga-drawer"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // An Exclusive focus prime is needed when reopening a still-mapped
+    // layer surface; OnDemand alone does not reliably restore key delivery.
+    WlrLayershell.keyboardFocus: root.opened
+      ? (focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+      : WlrKeyboardFocus.None
+
+    property bool focusPrimed: false
+
+    function primeFocus() {
+      if (root.opened && backingWindowVisible) focusPrimeTimer.restart()
+    }
+
+    onBackingWindowVisibleChanged: primeFocus()
+
+    Timer {
+      id: focusPrimeTimer
+      interval: 75
+      onTriggered: {
+        if (!root.opened) return
+        surface.focusPrimed = true
+        keyCatcher.forceActiveFocus()
+      }
+    }
+
+    Connections {
+      target: root
+      function onOpenedChanged() {
+        if (!root.opened) {
+          surface.focusPrimed = false
+          return
+        }
+        surface.focusPrimed = false
+        surface.primeFocus()
+        Qt.callLater(function() {
+          if (root.opened) keyCatcher.forceActiveFocus()
+        })
+      }
+    }
 
     anchors {
       left: root.edge === "left" || !root.verticalEdge
@@ -715,8 +762,53 @@ Item {
       // close path in both normal and edit modes.
       context: Qt.ApplicationShortcut
       onActivated: {
-        if (root.catalogOpen) root.catalogOpen = false
-        else root.close()
+        root.handleEscape()
+      }
+    }
+
+    // The fullscreen layer surface sits above the bar while Drawer is open.
+    // Forward clicks in the bar strip to the registered WidgetButton so its
+    // icon can close Drawer or switch to another Omarchy popup in one click.
+    MouseArea {
+      id: surfaceClickForwarder
+      anchors.fill: parent
+      z: -1
+      enabled: root.opened
+      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+
+      function inBarRegion(x, y) {
+        if (root.barPosition === "bottom") return y >= height - root.barInset
+        if (root.barPosition === "left") return x <= root.barInset
+        if (root.barPosition === "right") return x >= width - root.barInset
+        return y <= root.barInset
+      }
+
+      function barPoint(x, y) {
+        if (root.barPosition === "bottom") return Qt.point(x, y - (height - root.barInset))
+        if (root.barPosition === "right") return Qt.point(x - (width - root.barInset), y)
+        return Qt.point(x, y)
+      }
+
+      function forwardBarClick(x, y, button) {
+        if (!root.bar || !root.anchorWindow || !root.anchorWindow.contentItem || !root.bar.clickTargets) return false
+        var point = barPoint(x, y)
+        var targets = root.bar.clickTargets
+        for (var i = targets.length - 1; i >= 0; i--) {
+          var target = targets[i]
+          if (!target || !target.triggerPress || target.visible === false || target.opacity === 0 || !target.mapToItem) continue
+          if (root.bar.targetBelongsToWindow && !root.bar.targetBelongsToWindow(target, root.anchorWindow)) continue
+          var position = root.anchorWindow.itemPosition(target)
+          if (point.x >= position.x && point.x <= position.x + target.width
+              && point.y >= position.y && point.y <= position.y + target.height) {
+            target.triggerPress(button)
+            return true
+          }
+        }
+        return false
+      }
+
+      onClicked: function(mouse) {
+        if (inBarRegion(mouse.x, mouse.y)) forwardBarClick(mouse.x, mouse.y, mouse.button)
       }
     }
 
@@ -751,7 +843,10 @@ Item {
         anchors.fill: parent
         focus: root.opened
         Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+          if (event.key === Qt.Key_Escape) {
+            root.handleEscape()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
             root.moveKeyboardPlugin(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
@@ -884,12 +979,13 @@ Item {
             width: parent.width
             orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
             clip: true
-            interactive: root.resizingId === "" && root.draggedId === ""
+            interactive: root.resizingId === "" && root.draggedId === "" && root.hoveredPanelId === ""
             spacing: Style.space(7)
             model: root.pluginItems
             // Stack mode keeps every embedded panel instantiated; lifecycle is
-            // therefore independent of ListView delegate recycling.
-            cacheBuffer: contentHeight
+            // therefore independent of ListView delegate recycling. Do not
+            // bind this to contentHeight: that creates a ListView layout loop.
+            cacheBuffer: 100000
 
             displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
@@ -1041,8 +1137,20 @@ Item {
                   radius: Style.cornerRadius / 2
                   color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
                   border.width: 1
-                  border.color: pluginRow.index === root.keyboardPluginIndex
+                  border.color: pluginRow.index === root.keyboardPluginIndex || root.activePanelId === pluginRow.pluginId
                     ? Color.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+
+                  HoverHandler {
+                    id: panelHover
+                    onHoveredChanged: {
+                      if (hovered) {
+                        root.hoveredPanelId = pluginRow.pluginId
+                        root.activePanelId = pluginRow.pluginId
+                      } else if (root.hoveredPanelId === pluginRow.pluginId) {
+                        root.hoveredPanelId = ""
+                      }
+                    }
+                  }
 
                   Loader {
                     id: pageLoader
