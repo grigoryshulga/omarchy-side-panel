@@ -23,6 +23,7 @@ Item {
   property bool editing: false
   property bool catalogOpen: false
   property bool settingsOpen: false
+  property bool renamingPage: false
   property string expandedId: ""
   property string draggedId: ""
   property real dragWidth: 0
@@ -55,6 +56,7 @@ Item {
   readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
   readonly property bool transparentBackground: setting("transparentBackground", false) === true
+  readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
   readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? drawerWidth : drawerHeight))
@@ -126,6 +128,7 @@ Item {
     deactivateActivePanels("page-change")
     currentPage = index
     expandedId = ""
+    renamingPage = false
     panelEpoch += 1
     if (opened) adaptPreferredPanels()
   }
@@ -143,6 +146,22 @@ Item {
     persistPages(nextPages, currentPage)
   }
 
+  function beginPageRename() {
+    if (!currentPageRecord()) return
+    renamingPage = true
+    Qt.callLater(function() {
+      if (!renamingPage) return
+      pageTitleInput.forceActiveFocus()
+      pageTitleInput.selectAll()
+    })
+  }
+
+  function finishPageRename(title) {
+    if (!renamingPage) return
+    renamingPage = false
+    renameCurrentPage(title)
+  }
+
   function removeCurrentPage() {
     if (drawerPages.length <= 1) return
     var nextPages = copyPages(drawerPages)
@@ -154,6 +173,19 @@ Item {
     if (pluginItems.length === 0) return
     keyboardPluginIndex = (keyboardPluginIndex + delta + pluginItems.length) % pluginItems.length
     pluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
+  }
+
+  function scrollPluginList(deltaX, deltaY) {
+    if (hoveredPanelId !== "") return
+    var delta = verticalEdge ? deltaY : (deltaX !== 0 ? deltaX : deltaY)
+    if (delta === 0) return
+    if (verticalEdge) {
+      var maxY = Math.max(0, pluginList.contentHeight - pluginList.height)
+      pluginList.contentY = Math.max(0, Math.min(maxY, pluginList.contentY - delta))
+    } else {
+      var maxX = Math.max(0, pluginList.contentWidth - pluginList.width)
+      pluginList.contentX = Math.max(0, Math.min(maxX, pluginList.contentX - delta))
+    }
   }
 
   function activateKeyboardPlugin() {
@@ -235,6 +267,7 @@ Item {
     cancelResize()
     deactivateActivePanels()
     editing = value
+    renamingPage = false
     resizingId = ""
     expandedId = ""
     catalogOpen = false
@@ -610,6 +643,7 @@ Item {
     catalogOpen = false
     editing = false
     expandedId = ""
+    renamingPage = false
     hoveredPanelId = ""
     cancelResize()
     cancelDrag()
@@ -825,13 +859,23 @@ Item {
     Rectangle {
       id: drawerBody
       anchors.fill: parent
-      anchors.topMargin: !root.reservesSpace && root.barPosition === "top" ? root.barInset : 0
-      anchors.rightMargin: !root.reservesSpace && root.barPosition === "right" ? root.barInset : 0
-      anchors.bottomMargin: !root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0
-      anchors.leftMargin: !root.reservesSpace && root.barPosition === "left" ? root.barInset : 0
+      anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
+      anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
+      anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
+      anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
+      radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
-      border.width: 1
+      border.width: root.reservesSpace || root.transparentBackground ? 0 : 1
       border.color: root.transparentBackground ? "transparent" : Color.popups.border
+
+      MouseArea {
+        anchors.fill: parent
+        z: -1
+        onWheel: function(wheel) {
+          root.scrollPluginList(wheel.angleDelta.x, wheel.angleDelta.y)
+          wheel.accepted = true
+        }
+      }
 
       Item {
         id: keyCatcher
@@ -864,6 +908,7 @@ Item {
 
             Text {
               id: title
+              visible: !root.renamingPage
               anchors.left: parent.left
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(8)
@@ -875,12 +920,39 @@ Item {
               font.bold: true
               font.letterSpacing: 1.1
               elide: Text.ElideRight
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.IBeamCursor
+                onDoubleClicked: root.beginPageRename()
+              }
+            }
+
+            TextInput {
+              id: pageTitleInput
+              visible: root.renamingPage
+              anchors.left: parent.left
+              anchors.right: editButton.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+              font.letterSpacing: 1.1
+              selectByMouse: true
+              onEditingFinished: root.finishPageRename(text)
+              Keys.onEscapePressed: function(event) {
+                root.renamingPage = false
+                event.accepted = true
+              }
             }
 
             Rectangle {
               id: settingsButton
-              visible: titleRowHover.hovered || root.settingsOpen
-              anchors.right: editButton.left
+              visible: !root.editing && (titleRowHover.hovered || root.settingsOpen)
+              anchors.right: pinButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
@@ -894,8 +966,7 @@ Item {
             Rectangle {
               id: editButton
               visible: titleRowHover.hovered || root.editing
-              anchors.right: pinButton.left
-              anchors.rightMargin: Style.space(6)
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
@@ -927,8 +998,9 @@ Item {
 
             Rectangle {
               id: pinButton
-              visible: titleRowHover.hovered || root.pinned
-              anchors.right: parent.right
+              visible: !root.editing && (titleRowHover.hovered || root.pinned)
+              anchors.right: editButton.left
+              anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
               height: Math.round(Style.space(28))
@@ -1667,43 +1739,13 @@ Item {
           }
 
           Text {
-            text: "PAGE NAME"
+            visible: root.drawerPages.length > 1
+            text: "Delete current page"
             color: root.foreground
-            opacity: 0.6
+            opacity: 0.7
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
-          }
-
-          Rectangle {
-            width: parent.width
-            height: Math.round(Style.space(38))
-            radius: Style.cornerRadius / 2
-            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-            TextInput {
-              id: pageNameInput
-              anchors.left: parent.left
-              anchors.right: removePageButton.left
-              anchors.margins: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              selectByMouse: true
-              onEditingFinished: root.renameCurrentPage(text)
-            }
-            Text {
-              id: removePageButton
-              visible: root.drawerPages.length > 1
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Delete"
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
-            }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
           }
 
           Rectangle {
