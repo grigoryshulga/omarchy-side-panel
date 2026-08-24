@@ -734,14 +734,12 @@ Item {
   FileView {
     id: drawerStateFile
     path: root.statePath
-    watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: root.loadDrawerState(text())
     onLoadFailed: Qt.callLater(function() {
       if (root.drawerPages.length > 0) root.persistDrawerState()
     })
-    onFileChanged: reload()
   }
 
   onOpenedChanged: {
