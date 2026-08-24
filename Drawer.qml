@@ -1060,7 +1060,7 @@ Item {
               id: title
               visible: !root.renamingPage
               anchors.left: parent.left
-              anchors.right: editButton.left
+              anchors.right: root.editing ? addButton.left : editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
@@ -1082,7 +1082,7 @@ Item {
               id: pageTitleInput
               visible: root.renamingPage
               anchors.left: parent.left
-              anchors.right: editButton.left
+              anchors.right: root.editing ? addButton.left : editButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
@@ -1143,6 +1143,36 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.setEditing(!root.editing)
+              }
+            }
+
+            Rectangle {
+              id: addButton
+              visible: root.editing
+              anchors.right: editButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Math.round(Style.space(28))
+              height: width
+              radius: height / 2
+              color: addHover.containsMouse
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+              Text {
+                anchors.centerIn: parent
+                text: "\uf067"
+                color: root.chromeForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: addHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.catalogOpen = true
               }
             }
 
@@ -1457,36 +1487,6 @@ Item {
               radius: height / 2
               color: Color.accent
               z: 3
-            }
-          }
-
-          Rectangle {
-            id: addButton
-            visible: root.editing
-            anchors.bottom: pageCarousel.top
-            anchors.bottomMargin: Style.space(8)
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(parent.width, Style.space(210))
-            height: Math.round(Style.space(36))
-            radius: height / 2
-            color: addHover.containsMouse
-              ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-              : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-            Text {
-              anchors.centerIn: parent
-              text: "\uf067"
-              color: root.chromeForeground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-            }
-
-            MouseArea {
-              id: addHover
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.catalogOpen = true
             }
           }
 
