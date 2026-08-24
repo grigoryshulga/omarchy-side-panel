@@ -56,7 +56,7 @@ Item {
   readonly property int drawerHeight: Math.round(Style.space(420))
   readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
-  readonly property bool transparentBackground: bar && bar.transparent === true
+  readonly property bool transparentBackground: reservesSpace && bar && bar.transparent === true
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
