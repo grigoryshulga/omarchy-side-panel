@@ -4,6 +4,21 @@
 bar icon and exposes a reorderable, collapsible plugin list from the configured
 left, right, top, or bottom screen edge.
 
+## Preview
+
+Side Panel keeps related Omarchy pages in one keyboard-navigable surface while
+leaving the current workspace visible.
+
+| Left: agents | Left: network |
+| --- | --- |
+| ![Left side panel showing agent controls](assets/screenshots/left-agents.png) | ![Left side panel showing network controls](assets/screenshots/left-network.png) |
+
+| Left: media | Top: agents |
+| --- | --- |
+| ![Left side panel showing media controls](assets/screenshots/left-media.png) | ![Top side panel showing compact plugin widths](assets/screenshots/top-agents.png) |
+
+![Top side panel showing the network page](assets/screenshots/top-network.png)
+
 ## Compatibility
 
 An existing Omarchy `bar-widget` cannot be embedded safely just by loading its
