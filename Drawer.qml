@@ -1418,9 +1418,10 @@ Item {
                     onHoveredChanged: {
                       if (hovered) {
                         root.hoveredPanelId = pluginRow.pluginId
-                        // Hover selects the panel for subsequent keyboard navigation
-                        // without stealing active focus from a plugin control.
+                        // Hover makes the panel's key catcher active, matching
+                        // Ctrl+Tab navigation between embedded panels.
                         root.keyboardPluginIndex = pluginRow.index
+                        pluginRow.focusPanel()
                       } else if (root.hoveredPanelId === pluginRow.pluginId) {
                         root.hoveredPanelId = ""
                       }
