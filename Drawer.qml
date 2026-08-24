@@ -1063,6 +1063,7 @@ Item {
           }
         }
         Item {
+          visible: !root.settingsOpen
           anchors.fill: parent
           anchors.margins: Style.space(14)
 
