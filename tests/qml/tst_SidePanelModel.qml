@@ -34,6 +34,30 @@ TestCase {
     compare(pages[1].items.length, 0)
   }
 
+  function test_parse_state_rejects_large_input_and_bounds_models() {
+    var oversized = "{\"version\":1,\"pages\":[]}" + new Array(SidePanelModel.MAX_STATE_BYTES + 1).join(" ")
+    verify(SidePanelModel.parseState(oversized, [], resolve) === null)
+
+    var pages = []
+    for (var pageIndex = 0; pageIndex < SidePanelModel.MAX_PAGES + 2; pageIndex++) {
+      var items = []
+      for (var itemIndex = 0; itemIndex < SidePanelModel.MAX_ITEMS_PER_PAGE + 2; itemIndex++)
+        items.push({
+          id: "plugin-" + pageIndex + "-" + itemIndex,
+          label: pageIndex === 0 && itemIndex === 0 ? new Array(300).join("x") : "Label",
+          icon: pageIndex === 0 && itemIndex === 0 ? new Array(100).join("i") : "i"
+        })
+      pages.push({ title: new Array(200).join("t"), items: items })
+    }
+
+    var state = SidePanelModel.parseState(JSON.stringify({ version: 1, pages: pages }), [], resolve)
+    compare(state.pages.length, SidePanelModel.MAX_PAGES)
+    compare(state.pages[0].items.length, SidePanelModel.MAX_ITEMS_PER_PAGE)
+    compare(state.pages[0].title.length, SidePanelModel.MAX_PAGE_TITLE_LENGTH)
+    compare(state.pages[0].items[0].label.length, SidePanelModel.MAX_ITEM_LABEL_LENGTH)
+    compare(state.pages[0].items[0].icon.length, SidePanelModel.MAX_ITEM_ICON_LENGTH)
+  }
+
   function test_move_and_resize_are_immutable() {
     var source = [{ id: "one", height: 0, width: 315 }, { id: "two", height: 0 }, { id: "three", height: 0 }]
     var moved = SidePanelModel.move(source, "one", "three", true)

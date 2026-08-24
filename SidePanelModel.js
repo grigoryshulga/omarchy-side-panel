@@ -1,8 +1,21 @@
 .pragma library
 
+var MAX_STATE_BYTES = 64 * 1024
+var MAX_PAGES = 12
+var MAX_ITEMS_PER_PAGE = 24
+var MAX_PAGE_TITLE_LENGTH = 80
+var MAX_ITEM_ID_LENGTH = 160
+var MAX_ITEM_LABEL_LENGTH = 160
+var MAX_ITEM_ICON_LENGTH = 32
+
 function finiteNumber(value, fallback) {
   var number = Number(value)
   return isFinite(number) ? number : fallback
+}
+
+function boundedString(value, maximum) {
+  var string = value === undefined || value === null ? "" : String(value)
+  return string.length > maximum ? string.slice(0, maximum) : string
 }
 
 function normalizedHeight(value) {
@@ -10,18 +23,20 @@ function normalizedHeight(value) {
   return height > 0 ? height : 0
 }
 
-function normalize(items, resolveId) {
+function normalize(items, resolveId, maximum) {
   var normalized = []
   var seen = ({})
-  for (var i = 0; i < (items || []).length; i++) {
-    var item = items[i] || ({})
-    var id = String(resolveId(item) || "")
+  var source = Array.isArray(items) ? items : []
+  var limit = Math.max(0, Math.floor(Math.min(MAX_ITEMS_PER_PAGE, finiteNumber(maximum, MAX_ITEMS_PER_PAGE))))
+  for (var i = 0; i < source.length && i < limit; i++) {
+    var item = source[i] || ({})
+    var id = boundedString(resolveId(item), MAX_ITEM_ID_LENGTH)
     if (id === "" || id === "gshulga.side-panel" || seen[id]) continue
     seen[id] = true
     normalized.push({
       id: id,
-      label: String(item.label || ""),
-      icon: String(item.icon || ""),
+      label: boundedString(item.label, MAX_ITEM_LABEL_LENGTH),
+      icon: boundedString(item.icon, MAX_ITEM_ICON_LENGTH),
       height: normalizedHeight(item.height),
       width: normalizedHeight(item.width),
       embedding: item.embedding === "standard" ? "standard" : ""
@@ -31,7 +46,7 @@ function normalize(items, resolveId) {
 }
 
 function pageTitle(value, index) {
-  var title = String(value || "").trim()
+  var title = boundedString(value, MAX_PAGE_TITLE_LENGTH).trim()
   return title === "" ? "Page " + (index + 1) : title
 }
 
@@ -39,9 +54,9 @@ function normalizePages(pages, defaults, resolveId) {
   var source = Array.isArray(pages) && pages.length > 0 ? pages : [{ title: "Plugins", items: defaults }]
   var normalized = []
   var usedPlugins = ({})
-  for (var i = 0; i < source.length; i++) {
+  for (var i = 0; i < source.length && i < MAX_PAGES; i++) {
     var page = source[i] || ({})
-    var items = normalize(page.items, resolveId)
+    var items = normalize(page.items, resolveId, MAX_ITEMS_PER_PAGE)
     var uniqueItems = []
     for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
       if (usedPlugins[items[itemIndex].id]) continue
@@ -56,6 +71,35 @@ function normalizePages(pages, defaults, resolveId) {
   return normalized
 }
 
+function utf8ByteLength(value) {
+  try {
+    return unescape(encodeURIComponent(String(value))).length
+  } catch (error) {
+    return MAX_STATE_BYTES + 1
+  }
+}
+
+function parseState(raw, defaults, resolveId) {
+  if (utf8ByteLength(raw) > MAX_STATE_BYTES) return null
+  try {
+    var state = JSON.parse(String(raw || ""))
+    if (!state || state.version !== 1 || !Array.isArray(state.pages)) return null
+    var pages = normalizePages(state.pages, defaults, resolveId)
+    var normalized = {
+      version: 1,
+      pages: pages,
+      currentPage: Math.max(0, Math.min(pages.length - 1, Math.floor(finiteNumber(state.currentPage, 0))))
+    }
+    if (["left", "right", "top", "bottom"].indexOf(state.edge) >= 0) normalized.edge = state.edge
+    if (["overlay", "reserve"].indexOf(state.layoutMode) >= 0) normalized.layoutMode = state.layoutMode
+    var edgeSize = finiteNumber(state.edgeSize, 0)
+    if (edgeSize > 0 && edgeSize <= 4096) normalized.edgeSize = edgeSize
+    return normalized
+  } catch (error) {
+    return null
+  }
+}
+
 function pagesFromSettings(settings, defaults, resolveId) {
   if (settings && Array.isArray(settings.pages) && settings.pages.length > 0)
     return normalizePages(settings.pages, defaults, resolveId)
@@ -66,14 +110,15 @@ function pagesFromSettings(settings, defaults, resolveId) {
 
 function copy(items) {
   var result = []
-  for (var i = 0; i < items.length; i++) {
+  var source = Array.isArray(items) ? items : []
+  for (var i = 0; i < source.length && i < MAX_ITEMS_PER_PAGE; i++) {
     result.push({
-      id: items[i].id,
-      label: items[i].label,
-      icon: items[i].icon,
-      height: normalizedHeight(items[i].height),
-      width: normalizedHeight(items[i].width),
-      embedding: items[i].embedding === "standard" ? "standard" : ""
+      id: boundedString(source[i].id, MAX_ITEM_ID_LENGTH),
+      label: boundedString(source[i].label, MAX_ITEM_LABEL_LENGTH),
+      icon: boundedString(source[i].icon, MAX_ITEM_ICON_LENGTH),
+      height: normalizedHeight(source[i].height),
+      width: normalizedHeight(source[i].width),
+      embedding: source[i].embedding === "standard" ? "standard" : ""
     })
   }
   return result
@@ -107,8 +152,9 @@ function move(items, sourceId, targetId, after) {
 
 function copyPages(pages) {
   var result = []
-  for (var i = 0; i < pages.length; i++) {
-    result.push({ title: pageTitle(pages[i].title, i), items: copy(pages[i].items || []) })
+  var source = Array.isArray(pages) ? pages : []
+  for (var i = 0; i < source.length && i < MAX_PAGES; i++) {
+    result.push({ title: pageTitle(source[i].title, i), items: copy(source[i].items || []) })
   }
   return result
 }

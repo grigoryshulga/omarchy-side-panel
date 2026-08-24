@@ -266,18 +266,26 @@ Item {
   }
 
   function loadSidePanelState(raw) {
-    try {
-      var state = JSON.parse(String(raw || ""))
-      if (!state || state.version !== 1 || !Array.isArray(state.pages)) return
-      sidePanelState = state
-      deactivateActivePanels("state-load")
-      sidePanelPages = SidePanelModel.normalizePages(state.pages, defaultPluginItems(), function(item) {
-        return root.resolvedPluginId(item)
-      })
-      currentPage = Math.max(0, Math.min(sidePanelPages.length - 1, Number(state.currentPage) || 0))
-    } catch (error) {
-      console.warn("SidePanel: cannot load saved state:", error)
+    var state = SidePanelModel.parseState(raw, defaultPluginItems(), function(item) {
+      return root.resolvedPluginId(item)
+    })
+    if (!state) {
+      console.warn("SidePanel: cannot load saved state")
+      return
     }
+    deactivateActivePanels("state-load")
+    sidePanelState = state
+    sidePanelPages = state.pages
+    currentPage = state.currentPage
+  }
+
+  function loadSavedSidePanelState() {
+    stateReader.command = [
+      "sh", "-c",
+      "size=$(stat -c %s -- \"$1\") || exit 1; [ \"$size\" -le \"$2\" ] || exit 2; head -c \"$2\" -- \"$1\"",
+      "sh", statePath, String(SidePanelModel.MAX_STATE_BYTES)
+    ]
+    stateReader.running = true
   }
 
   function resizePosition(handle, x, y) {
@@ -803,6 +811,7 @@ Item {
   Component.onCompleted: {
     sidePanelPages = pagesFromSettings()
     scheduleTransparentForegroundRefresh()
+    loadSavedSidePanelState()
   }
   onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
@@ -814,11 +823,25 @@ Item {
     id: sidePanelStateFile
     path: root.statePath
     atomicWrites: true
+    preload: false
     printErrors: false
-    onLoaded: root.loadSidePanelState(text())
-    onLoadFailed: Qt.callLater(function() {
-      if (root.sidePanelPages.length > 0) root.persistSidePanelState()
-    })
+  }
+
+  Process {
+    id: stateReader
+    stdout: StdioCollector {
+      id: stateReaderOutput
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        root.loadSidePanelState(String(stateReaderOutput.text || ""))
+      } else if (exitCode === 2) {
+        console.warn("SidePanel: saved state exceeds the size limit")
+      } else if (root.sidePanelPages.length > 0) {
+        root.persistSidePanelState()
+      }
+    }
   }
 
   Timer {
@@ -1097,6 +1120,7 @@ Item {
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
+              textFormat: Text.PlainText
               color: root.chromeForeground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
@@ -1403,6 +1427,7 @@ Item {
                   anchors.leftMargin: Style.space(12)
                   anchors.verticalCenter: parent.verticalCenter
                   text: root.pluginIcon(pluginRow.plugin)
+                  textFormat: Text.PlainText
                   color: root.foreground
                   font.family: Style.font.family
                   font.pixelSize: Style.font.icon
@@ -1415,6 +1440,7 @@ Item {
                   anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   text: root.pluginLabel(pluginRow.plugin)
+                  textFormat: Text.PlainText
                   color: root.foreground
                   font.family: Style.font.family
                   font.pixelSize: Style.font.body
@@ -1530,6 +1556,7 @@ Item {
                             : (root.canAdapt(pluginRow.plugin)
                               ? "Preparing embedded panel..."
                               : "This plugin does not support embedding in the side panel.")))
+                      textFormat: Text.PlainText
                       color: root.foreground
                       opacity: 0.65
                       font.family: Style.font.family
@@ -1644,6 +1671,7 @@ Item {
             anchors.rightMargin: Style.space(12)
             anchors.verticalCenter: parent.verticalCenter
             text: root.pluginLabel(root.itemFor(root.draggedId))
+            textFormat: Text.PlainText
             color: root.foreground
             font.family: Style.font.family
             font.pixelSize: Style.font.body
@@ -1816,6 +1844,7 @@ Item {
                 anchors.top: parent.top
                 anchors.topMargin: Style.space(6)
                 text: String(modelData.label)
+                textFormat: Text.PlainText
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -1830,6 +1859,7 @@ Item {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Style.space(6)
                 text: modelData.enabled ? String(modelData.description) : "Enable and add to side panel"
+                textFormat: Text.PlainText
                 color: root.foreground
                 opacity: 0.56
                 font.family: Style.font.family
