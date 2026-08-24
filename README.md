@@ -94,7 +94,7 @@ is kept as plain data in the Side Panel layout entry in
 - `reserve`: Side Panel reserves its edge width or height, so Hyprland lays out
   normal windows in the remaining screen area.
 
-When `plugins` is omitted, Side Panel starts with a small local default list.
+When `plugins` is omitted, Side Panel starts empty.
 Existing `pages` configuration is flattened into the list the first time its
 order or membership is changed.
 
@@ -109,9 +109,11 @@ source on a later open, including after a shell or plugin update.
   return to the panel-only view.
 - Click `PIN` to keep Side Panel open when another bar popout is activated. Click
   `UNPIN` or the Side Panel bar icon to close it.
-- In edit mode, drag a panel's lower edge to resize it in 5px steps. Use the
-  trash button to remove a plugin and the up/down handle to reorder it.
-  A highlighted line previews the insertion position.
+- In edit mode, drag any free area of a plugin header to reorder it. Use the
+  trash button to remove a plugin. A highlighted line previews the insertion
+  position.
+- Drag a panel's lower edge to resize it in 5px steps. The visible grip on the
+  Side Panel's outer edge resizes the Side Panel itself.
 - In edit mode, click `+` to see every installed Omarchy plugin not already in
   the list, then add one immediately. Disabled plugins are identified in that
   catalog; their native fallback requires enabling them in Omarchy first.

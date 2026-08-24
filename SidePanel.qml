@@ -110,12 +110,7 @@ Item {
   }
 
   function defaultPluginItems() {
-    return [
-      { id: "io.github.sotoaugusto.ticktick", label: "TickTick", icon: "\uf0ae" },
-      { id: "gshulga.jira", label: "Jira", icon: "\ue75c" },
-      { id: "omarchy.bluetooth", label: "Bluetooth", icon: "\uf293" },
-      { id: "b.everything", label: "Everything", icon: "\uf002" }
-    ]
+    return []
   }
 
   function normalizeItems(items) {
@@ -1357,11 +1352,43 @@ Item {
                 radius: Style.cornerRadius / 2
                 color: pluginRow.expanded
                   ? Style.selectedFillFor(root.foreground, Color.accent)
-                  : (headerHover.containsMouse
+                  : (headerDrag.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035))
                 border.width: 1
                 border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, pluginRow.expanded ? 0.22 : 0.09)
+
+                MouseArea {
+                  id: headerDrag
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  preventStealing: true
+                  cursorShape: dragStarted ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                  property real pressX: 0
+                  property real pressY: 0
+                  property bool dragStarted: false
+
+                  onPressed: function(mouse) {
+                    pressX = mouse.x
+                    pressY = mouse.y
+                    dragStarted = false
+                  }
+                  onPositionChanged: function(mouse) {
+                    if (!pressed) return
+                    if (!dragStarted && Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) >= 6) {
+                      dragStarted = true
+                      root.beginDrag(pluginRow, mouse.x, mouse.y)
+                    }
+                    if (dragStarted) root.updateDrag(pluginRow, mouse.x, mouse.y)
+                  }
+                  onReleased: function(mouse) {
+                    if (dragStarted) root.finishDrag()
+                    else root.setExpanded(pluginRow.pluginId)
+                  }
+                  onCanceled: {
+                    if (dragStarted) root.cancelDrag()
+                  }
+                }
 
                 Text {
                   anchors.left: parent.left
@@ -1389,7 +1416,7 @@ Item {
 
                 Text {
                   id: expansionIndicator
-                  anchors.right: reorderButton.left
+                  anchors.right: deleteButton.left
                   anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
                   text: pluginRow.expanded ? "-" : "+"
@@ -1397,50 +1424,6 @@ Item {
                   opacity: 0.62
                   font.family: Style.font.family
                   font.pixelSize: Style.font.subtitle
-                }
-
-                MouseArea {
-                  id: headerHover
-                  anchors.left: parent.left
-                  anchors.right: expansionIndicator.left
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.setExpanded(pluginRow.pluginId)
-                }
-
-                Item {
-                  id: reorderButton
-                  anchors.right: deleteButton.left
-                  anchors.rightMargin: Style.space(2)
-                  anchors.verticalCenter: parent.verticalCenter
-                  width: Math.round(Style.space(30))
-                  height: width
-
-                  Text {
-                    anchors.centerIn: parent
-                    text: "\u2195"
-                    color: root.foreground
-                    opacity: 0.5
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.subtitle
-                  }
-
-                  MouseArea {
-                    id: reorderMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.DragMoveCursor
-                    preventStealing: true
-                    onPressed: function(mouse) {
-                      root.beginDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
-                    }
-                    onPositionChanged: function(mouse) {
-                      root.updateDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
-                    }
-                    onReleased: root.finishDrag()
-                    onCanceled: root.cancelDrag()
-                  }
                 }
 
                 Item {
@@ -1673,8 +1656,51 @@ Item {
         y: root.verticalEdge
           ? (parent.height - height) / 2
           : (root.edge === "top" ? parent.height - height : 0)
-        color: sidePanelResizeMouse.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
+        radius: Math.min(width, height) / 2
+        color: sidePanelResizeMouse.containsMouse || root.resizingSidePanel
+          ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+          : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
+        border.width: 1
+        border.color: Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.18)
         z: 9
+
+        Item {
+          anchors.centerIn: parent
+          width: root.verticalEdge ? Math.round(Style.space(5)) : Math.round(Style.space(20))
+          height: root.verticalEdge ? Math.round(Style.space(20)) : Math.round(Style.space(5))
+
+          Row {
+            visible: root.verticalEdge
+            anchors.centerIn: parent
+            spacing: 1
+            Repeater {
+              model: 3
+              delegate: Rectangle {
+                width: 1
+                height: Math.round(Style.space(14))
+                radius: width / 2
+                color: root.chromeForeground
+                opacity: 0.52
+              }
+            }
+          }
+
+          Column {
+            visible: !root.verticalEdge
+            anchors.centerIn: parent
+            spacing: 1
+            Repeater {
+              model: 3
+              delegate: Rectangle {
+                width: Math.round(Style.space(14))
+                height: 1
+                radius: height / 2
+                color: root.chromeForeground
+                opacity: 0.52
+              }
+            }
+          }
+        }
 
         MouseArea {
           id: sidePanelResizeMouse
