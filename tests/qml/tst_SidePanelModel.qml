@@ -7,16 +7,17 @@ TestCase {
 
   function resolve(item) { return item.id === "alias" ? "resolved" : item.id }
 
-  function test_normalize_deduplicates_and_canonicalizes_height() {
+  function test_normalize_deduplicates_and_canonicalizes_dimensions() {
     var items = SidePanelModel.normalize([
-      { id: "alias", height: 13.5 },
-      { id: "resolved", height: -4 },
+      { id: "alias", height: 13.5, width: 315 },
+      { id: "resolved", height: -4, width: -4 },
       { id: "gshulga.side-panel" },
       { id: "", height: 100 }
     ], resolve)
     compare(items.length, 1)
     compare(items[0].id, "resolved")
     compare(items[0].height, 13.5)
+    compare(items[0].width, 315)
     compare(items[0].embedding, "")
   }
 
@@ -34,12 +35,13 @@ TestCase {
   }
 
   function test_move_and_resize_are_immutable() {
-    var source = [{ id: "one", height: 0 }, { id: "two", height: 0 }, { id: "three", height: 0 }]
+    var source = [{ id: "one", height: 0, width: 315 }, { id: "two", height: 0 }, { id: "three", height: 0 }]
     var moved = SidePanelModel.move(source, "one", "three", true)
     compare(moved.map(function(item) { return item.id }).join(","), "two,three,one")
     compare(SidePanelModel.move(source, "three", "one", false).map(function(item) { return item.id }).join(","), "three,one,two")
     compare(SidePanelModel.move(source, "two", "three", false).map(function(item) { return item.id }).join(","), "one,two,three")
     compare(source[0].id, "one")
+    compare(moved[2].width, 315)
     compare(SidePanelModel.resizeHeight(200, 10, -1000, 5, 5), 5)
     compare(SidePanelModel.resizeHeight(200, 10, 333, 5, 5), 525)
   }

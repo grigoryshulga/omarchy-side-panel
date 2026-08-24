@@ -23,6 +23,7 @@ function normalize(items, resolveId) {
       label: String(item.label || ""),
       icon: String(item.icon || ""),
       height: normalizedHeight(item.height),
+      width: normalizedHeight(item.width),
       embedding: item.embedding === "standard" ? "standard" : ""
     })
   }
@@ -71,6 +72,7 @@ function copy(items) {
       label: items[i].label,
       icon: items[i].icon,
       height: normalizedHeight(items[i].height),
+      width: normalizedHeight(items[i].width),
       embedding: items[i].embedding === "standard" ? "standard" : ""
     })
   }

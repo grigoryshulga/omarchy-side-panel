@@ -28,9 +28,9 @@ Item {
   property string draggedId: ""
   property real dragWidth: 0
   property string resizingId: ""
-  property real resizeStartHeight: 0
-  property real resizeStartY: 0
-  property real resizePreviewHeight: 0
+  property real resizeStartExtent: 0
+  property real resizeStartPosition: 0
+  property real resizePreviewExtent: 0
   property string dropTargetId: ""
   property bool dropAfter: false
   property real dropLineY: 0
@@ -355,29 +355,37 @@ Item {
   }
 
   function panelHeight(item) {
-    if (item && resizingId === item.id) return resizePreviewHeight
+    if (item && resizingId === item.id) return resizePreviewExtent
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
     return Math.max(5, Math.round(height))
   }
 
-  function beginResize(item, y) {
-    resizeStartHeight = panelHeight(item)
-    resizingId = item.id
-    resizeStartY = y
-    resizePreviewHeight = resizeStartHeight
+  function panelWidth(item) {
+    if (item && resizingId === item.id) return resizePreviewExtent
+    var width = Number(item ? item.width : 0)
+    if (!width) width = Style.space(360)
+    return Math.max(5, Math.round(width))
   }
 
-  function updateResize(y) {
+  function beginResize(item, position) {
+    resizeStartExtent = verticalEdge ? panelHeight(item) : panelWidth(item)
+    resizingId = item.id
+    resizeStartPosition = position
+    resizePreviewExtent = resizeStartExtent
+  }
+
+  function updateResize(position) {
     if (resizingId === "") return
-    resizePreviewHeight = SidePanelModel.resizeHeight(resizeStartHeight, resizeStartY, y, 5, 5)
+    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, position, 5, 5)
   }
 
   function finishResize() {
     var index = itemIndex(resizingId)
     if (index >= 0) {
       var next = copyItems(pluginItems)
-      next[index].height = resizePreviewHeight
+      if (verticalEdge) next[index].height = resizePreviewExtent
+      else next[index].width = resizePreviewExtent
       persistItems(next)
     }
     resizingId = ""
@@ -385,7 +393,7 @@ Item {
 
   function cancelResize() {
     resizingId = ""
-    resizePreviewHeight = 0
+    resizePreviewExtent = 0
   }
 
   function removePlugin(id) {
@@ -1335,7 +1343,7 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
-              width: root.verticalEdge ? pluginList.width : Math.max(Style.space(260), pluginList.width * 0.82)
+              width: root.verticalEdge ? pluginList.width : root.panelWidth(pluginRow.plugin)
               height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
               z: root.draggedId === pluginId ? 3 : 1
 
@@ -1535,11 +1543,11 @@ Item {
 
                 Rectangle {
                   id: resizeHandle
-                  visible: root.editing && pluginRow.expanded && root.verticalEdge
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.bottom: parent.bottom
-                  height: Math.round(Style.space(8))
+                  visible: root.editing && pluginRow.expanded
+                  width: root.verticalEdge ? parent.width : Math.round(Style.space(8))
+                  height: root.verticalEdge ? Math.round(Style.space(8)) : parent.height
+                  x: root.verticalEdge ? 0 : parent.width - width
+                  y: root.verticalEdge ? parent.height - height : 0
                   color: resizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : "transparent"
@@ -1549,14 +1557,14 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     preventStealing: true
-                    cursorShape: Qt.SizeVerCursor
+                    cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
                     onPressed: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.beginResize(pluginRow.plugin, point.y)
+                      root.beginResize(pluginRow.plugin, root.verticalEdge ? point.y : point.x)
                     }
                     onPositionChanged: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.updateResize(point.y)
+                      root.updateResize(root.verticalEdge ? point.y : point.x)
                     }
                     onReleased: root.finishResize()
                     onCanceled: root.cancelResize()

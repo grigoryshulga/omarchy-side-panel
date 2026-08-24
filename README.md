@@ -112,7 +112,8 @@ source on a later open, including after a shell or plugin update.
 - In edit mode, drag any free area of a plugin header to reorder it. Use the
   trash button to remove a plugin. A highlighted line previews the insertion
   position.
-- Drag a panel's lower edge to resize it in 5px steps. The visible grip on the
+- Drag a plugin panel's lower edge on left/right Side Panels, or its right edge
+  on top/bottom Side Panels, to resize it in 5px steps. The visible grip on the
   Side Panel's outer edge resizes the Side Panel itself.
 - In edit mode, click `+` to see every installed Omarchy plugin not already in
   the list, then add one immediately. Disabled plugins are identified in that
