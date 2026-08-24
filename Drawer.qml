@@ -1662,6 +1662,47 @@ Item {
           }
 
           Text {
+            text: "DISPLAY MODE"
+            color: root.foreground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            spacing: Style.space(8)
+            Repeater {
+              model: [
+                { mode: "overlay", label: "Overlay" },
+                { mode: "reserve", label: "Push screen" }
+              ]
+              delegate: Rectangle {
+                required property var modelData
+                width: Math.round(Style.space(118))
+                height: Math.round(Style.space(42))
+                radius: Style.cornerRadius / 2
+                color: root.layoutMode === modelData.mode
+                  ? Style.selectedFillFor(root.foreground, Color.accent)
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+
+                Text {
+                  anchors.centerIn: parent
+                  text: modelData.label
+                  color: root.foreground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.persistDrawerSetting("layoutMode", modelData.mode)
+                }
+              }
+            }
+          }
+
+          Text {
             text: "PAGE NAME"
             color: root.foreground
             opacity: 0.6
