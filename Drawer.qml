@@ -864,10 +864,10 @@ Item {
     }
 
     anchors {
-      left: root.edge === "left" || !root.verticalEdge
-      right: root.edge === "right" || !root.verticalEdge
-      top: root.verticalEdge || root.edge === "top"
-      bottom: root.verticalEdge || root.edge === "bottom"
+      left: !root.reservesSpace || root.edge === "left" || !root.verticalEdge
+      right: !root.reservesSpace || root.edge === "right" || !root.verticalEdge
+      top: !root.reservesSpace || root.verticalEdge || root.edge === "top"
+      bottom: !root.reservesSpace || root.verticalEdge || root.edge === "bottom"
     }
 
     implicitWidth: root.verticalEdge
@@ -929,7 +929,8 @@ Item {
       }
 
       onClicked: function(mouse) {
-        if (inBarRegion(mouse.x, mouse.y)) forwardBarClick(mouse.x, mouse.y, mouse.button)
+        if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
+        if (!root.pinned) root.close()
       }
     }
 
@@ -954,9 +955,13 @@ Item {
       id: drawerBody
       anchors.fill: parent
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
+        + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.drawerExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
+        + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.drawerExtent) : 0)
       anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
+        + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.drawerExtent) : 0)
       anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
+        + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.drawerExtent) : 0)
       radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
       border.width: root.reservesSpace || root.transparentBackground ? 0 : 1
@@ -1108,7 +1113,7 @@ Item {
               Text {
                 id: pinText
                 anchors.centerIn: parent
-                text: root.pinned ? "\uf1f8" : "\uf08d"
+                text: "\uf08d"
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
@@ -1120,10 +1125,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (root.pinned) root.close()
-                  else root.pinned = true
-                }
+                onClicked: root.pinned = !root.pinned
               }
             }
 
