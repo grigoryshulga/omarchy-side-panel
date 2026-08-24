@@ -381,12 +381,26 @@ Item {
     dragWidth = row.width
     dragPreview.x = point.x - dragWidth / 2
     dragPreview.y = point.y - dragPreview.height / 2
+    var listPoint = keyCatcher.mapToItem(pluginList, point.x, point.y)
+    updateDropTarget(listPoint.x, listPoint.y)
+  }
+
+  function updateDrag(row, x, y) {
+    if (draggedId !== row.pluginId) return
+    var point = row.mapToItem(keyCatcher, x, y)
+    dragPreview.x = point.x - dragWidth / 2
+    dragPreview.y = point.y - dragPreview.height / 2
+    var listPoint = keyCatcher.mapToItem(pluginList, point.x, point.y)
+    updateDropTarget(listPoint.x, listPoint.y)
   }
 
   function finishDrag() {
     if (draggedId === "") return
-    dragPreview.Drag.drop()
-    draggedId = ""
+    var sourceId = draggedId
+    var targetId = dropTargetId
+    var after = dropAfter
+    cancelDrag()
+    if (targetId !== "") moveItem(sourceId, targetId, after)
   }
 
   function cancelDrag() {
@@ -1236,10 +1250,12 @@ Item {
                     id: reorderMouse
                     anchors.fill: parent
                     cursorShape: Qt.DragMoveCursor
-                    drag.target: dragPreview
-                    drag.smoothed: false
+                    preventStealing: true
                     onPressed: function(mouse) {
                       root.beginDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
+                    }
+                    onPositionChanged: function(mouse) {
+                      root.updateDrag(pluginRow, reorderButton.x + mouse.x, reorderButton.y + mouse.y)
                     }
                     onReleased: root.finishDrag()
                     onCanceled: root.cancelDrag()
@@ -1377,22 +1393,6 @@ Item {
               }
             }
 
-            DropArea {
-              id: listDropArea
-              anchors.fill: parent
-              enabled: root.editing
-              keys: ["omarchy-drawer-plugin"]
-              z: 2
-              onEntered: function(drag) { root.updateDropTarget(drag.position.x, drag.position.y) }
-              onPositionChanged: function(drag) { root.updateDropTarget(drag.position.x, drag.position.y) }
-              onExited: root.clearDropTarget()
-              onDropped: function(drop) {
-                root.moveItem(root.draggedId, root.dropTargetId, root.dropAfter)
-                root.clearDropTarget()
-                drop.accepted = true
-              }
-            }
-
             Rectangle {
               visible: root.draggedId !== "" && root.dropTargetId !== ""
               x: root.verticalEdge ? Style.space(4) : root.dropLineY - width / 2
@@ -1500,10 +1500,6 @@ Item {
             elide: Text.ElideRight
           }
 
-          Drag.active: root.draggedId !== ""
-          Drag.keys: ["omarchy-drawer-plugin"]
-          Drag.hotSpot.x: width / 2
-          Drag.hotSpot.y: height / 2
         }
       }
 

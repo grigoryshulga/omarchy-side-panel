@@ -37,6 +37,8 @@ TestCase {
     var source = [{ id: "one", height: 0 }, { id: "two", height: 0 }, { id: "three", height: 0 }]
     var moved = DrawerModel.move(source, "one", "three", true)
     compare(moved.map(function(item) { return item.id }).join(","), "two,three,one")
+    compare(DrawerModel.move(source, "three", "one", false).map(function(item) { return item.id }).join(","), "three,one,two")
+    compare(DrawerModel.move(source, "two", "three", false).map(function(item) { return item.id }).join(","), "one,two,three")
     compare(source[0].id, "one")
     compare(DrawerModel.resizeHeight(200, 10, -1000, 160, 520, 5), 160)
     compare(DrawerModel.resizeHeight(200, 10, 333, 160, 520, 5), 520)
