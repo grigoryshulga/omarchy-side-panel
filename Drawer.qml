@@ -433,17 +433,33 @@ Item {
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || hasPlugin(id) || id === "gshulga.drawer" || !pluginEnabled({ id: id })) return
+    if (id === "" || hasPlugin(id) || id === "gshulga.drawer") return
     var manifest = pluginFor(id)
+    if (!manifest) return
     var next = copyItems(pluginItems)
     next.push({
       id: id,
-      label: manifest ? String(manifest.name || id) : id,
+      label: String(manifest.name || id),
       icon: ""
     })
     persistItems(next)
+    enablePluginForDrawer(id, manifest)
     catalogOpen = false
     setExpanded(id)
+  }
+
+  function enablePluginForDrawer(id, manifest) {
+    if (pluginEnabled({ id: id }) || !bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
+    bar.shell.mutateShellConfig(function(config) {
+      var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
+      config.disabledPlugins = disabled.filter(function(entry) { return String(entry) !== id })
+      if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+      if (manifest.__isFirstParty) return
+      if (!Array.isArray(config.plugins)) config.plugins = []
+      for (var index = 0; index < config.plugins.length; index++)
+        if (config.plugins[index] && String(config.plugins[index].id) === id) return
+      config.plugins.push({ id: id })
+    })
   }
 
   function pluginFor(id) {
@@ -1624,7 +1640,7 @@ Item {
                 anchors.rightMargin: Style.space(10)
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Style.space(6)
-                text: modelData.enabled ? String(modelData.description) : "Installed, currently disabled"
+                text: modelData.enabled ? String(modelData.description) : "Enable and add to Drawer"
                 color: root.foreground
                 opacity: 0.56
                 font.family: Style.font.family
@@ -1648,7 +1664,6 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                enabled: modelData.enabled
                 onClicked: root.addPlugin(String(modelData.id))
               }
             }
