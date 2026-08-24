@@ -138,6 +138,10 @@ Item {
 
 - `Escape`: close the drawer.
 - `Escape` while the add catalog is open: close the catalog.
+- `Ctrl+Tab`: focus the next embedded plugin panel.
+- `Ctrl+Shift+Tab`: focus the previous embedded plugin panel.
+- Once a panel is focused, its keyboard controls, including arrow-key navigation,
+  receive input directly.
 
 ## Automatic Embedding
 

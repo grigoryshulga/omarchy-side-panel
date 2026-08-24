@@ -204,12 +204,6 @@ Item {
     }
   }
 
-  function activateKeyboardPlugin() {
-    if (keyboardPluginIndex < 0 || keyboardPluginIndex >= pluginItems.length) return
-    if (editing) setExpanded(pluginItems[keyboardPluginIndex].id)
-    else activateItem(pluginItems[keyboardPluginIndex])
-  }
-
   function persistDrawerSetting(name, value) {
     var entry = DrawerModel.persistedEntry(settings, drawerPages)
     entry[name] = value
@@ -983,15 +977,6 @@ Item {
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             root.handleEscape()
-            event.accepted = true
-          } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
-            root.moveKeyboardPlugin(-1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
-            root.moveKeyboardPlugin(1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-            root.activateKeyboardPlugin()
             event.accepted = true
           }
         }
