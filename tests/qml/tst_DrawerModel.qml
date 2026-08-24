@@ -46,11 +46,12 @@ TestCase {
 
   function test_persisted_entry_uses_only_named_pages() {
     var entry = DrawerModel.persistedEntry(
-      { id: "gshulga.drawer", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left" },
+      { id: "gshulga.drawer", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left", transparentBackground: true },
       [{ title: "Main", items: [{ id: "one" }] }]
     )
     compare(entry.edge, "left")
     verify(entry.plugins === undefined)
+    verify(entry.transparentBackground === undefined)
     compare(entry.pages.length, 1)
     compare(entry.pages[0].title, "Main")
     compare(entry.pages[0].items[0].id, "one")

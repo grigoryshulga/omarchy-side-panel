@@ -118,7 +118,7 @@ function copyPages(pages) {
 function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.drawer" })
   for (var key in settings || ({})) {
-    if (key !== "id" && key !== "pages" && key !== "plugins") entry[key] = settings[key]
+    if (key !== "id" && key !== "pages" && key !== "plugins" && key !== "transparentBackground") entry[key] = settings[key]
   }
   entry.pages = copyPages(pages)
   return entry

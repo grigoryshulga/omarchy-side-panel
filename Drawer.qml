@@ -56,7 +56,7 @@ Item {
   readonly property int drawerHeight: Math.round(Style.space(420))
   readonly property bool verticalEdge: edge === "left" || edge === "right"
   readonly property bool reservesSpace: layoutMode === "reserve"
-  readonly property bool transparentBackground: setting("transparentBackground", false) === true
+  readonly property bool transparentBackground: bar && bar.transparent === true
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
@@ -255,7 +255,7 @@ Item {
       pages: copyPages(drawerPages),
       currentPage: currentPage
     }
-    var settingNames = ["edge", "edgeSize", "layoutMode", "transparentBackground"]
+    var settingNames = ["edge", "edgeSize", "layoutMode"]
     for (var index = 0; index < settingNames.length; index++) {
       var name = settingNames[index]
       var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
@@ -1911,37 +1911,6 @@ Item {
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.removeCurrentPage() }
           }
 
-          Rectangle {
-            width: parent.width
-            height: Math.round(Style.space(42))
-            radius: Style.cornerRadius / 2
-            color: root.transparentBackground
-              ? Style.selectedFillFor(root.foreground, Color.accent)
-              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-            Text {
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(12)
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Transparent background"
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-            }
-            Text {
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(12)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.transparentBackground ? "ON" : "OFF"
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-            }
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.persistDrawerSetting("transparentBackground", !root.transparentBackground)
-            }
-          }
         }
       }
     }
