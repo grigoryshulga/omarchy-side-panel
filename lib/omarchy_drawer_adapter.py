@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import stat
 import sys
@@ -17,7 +18,7 @@ class AdaptationError(Exception):
     """The source does not satisfy Drawer's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "drawer-adapter-v5"
+ADAPTER_VERSION = "drawer-adapter-v6"
 
 
 @dataclass(frozen=True)
@@ -256,6 +257,26 @@ def is_within(path: Path, parent: Path) -> bool:
         return False
 
 
+RELATIVE_IMPORT = re.compile(
+    r'(?m)^(?P<prefix>\s*import\s+)(?P<quote>["\'])(?P<path>[^"\']+)(?P=quote)(?P<suffix>\s+as\s+\w+)?\s*$'
+)
+
+
+def rebase_external_relative_imports(source: str, source_dir: Path, entry_source: Path) -> str:
+    """Keep QML imports outside a copied plugin pointed at their original directory."""
+
+    def replace(match: re.Match[str]) -> str:
+        relative = match.group("path")
+        if not relative.startswith("."):
+            return match.group(0)
+        target = (entry_source.parent / relative).resolve()
+        if not target.is_dir() or is_within(target, source_dir):
+            return match.group(0)
+        return f'{match.group("prefix")}{match.group("quote")}{target.as_posix()}{match.group("quote")}{match.group("suffix") or ""}'
+
+    return RELATIVE_IMPORT.sub(replace, source)
+
+
 def safe_directory(path: Path) -> None:
     if path.exists() and path.is_symlink():
         raise AdaptationError(f"refusing a symlinked cache path: {path}")
@@ -292,7 +313,8 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
 
     entry_source = choose_source(source_dir, entry_point)
     source_digest = source_tree_digest(source_dir)
-    transformed = transform_qml(entry_source.read_text(encoding="utf-8"))
+    source = rebase_external_relative_imports(entry_source.read_text(encoding="utf-8"), source_dir, entry_source)
+    transformed = transform_qml(source)
     namespace = hashlib.sha256(plugin_id.encode("utf-8")).hexdigest()[:24]
     fingerprint = hashlib.sha256((source_digest + "\0" + ADAPTER_VERSION).encode()).hexdigest()[:24]
     destination = cache_root / namespace / fingerprint

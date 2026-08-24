@@ -73,6 +73,26 @@ class AdapterTests(unittest.TestCase):
             self.assertIn("property bool dimmed", (output.parent / "DrawerHiddenBarButton.qml").read_text())
             self.assertEqual(output, adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT))
 
+    def test_build_rebases_relative_imports_outside_the_plugin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            components = root / "components"
+            components.mkdir()
+            (source / "Panel.qml").write_text(
+                """import QtQuick
+import "../components" as Components
+Panel {
+  id: root
+  KeyboardPanel { open: root.opened }
+}
+"""
+            )
+
+            output = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+            self.assertIn(f'import "{components.as_posix()}" as Components', output.read_text())
+
     def test_rejects_escape_and_symlinked_source(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
