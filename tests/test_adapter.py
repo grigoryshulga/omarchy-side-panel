@@ -35,7 +35,7 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("property var drawerHost: null", transformed)
         self.assertIn("DrawerDisabledIpc { function close()", transformed)
         self.assertIn("DrawerHiddenBarButton {", transformed)
-        self.assertIn("DrawerPanelHost {\n    drawerHost: root.drawerHost", transformed)
+        self.assertIn("DrawerPanelHost {\n    anchors.fill: parent\n    drawerHost: root.drawerHost", transformed)
         self.assertIn("function close() { root.close() }", transformed)
         self.assertIn("// KeyboardPanel { root.controller.hide()", transformed)
 
@@ -106,7 +106,7 @@ class AdapterTests(unittest.TestCase):
             cache = root / "cache"
             namespace = adapter.hashlib.sha256(b"example.plugin").hexdigest()[:24]
             fingerprint = adapter.hashlib.sha256(
-                (adapter.source_tree_digest(source) + "\0drawer-adapter-v2").encode()
+                (adapter.source_tree_digest(source) + "\0" + adapter.ADAPTER_VERSION).encode()
             ).hexdigest()[:24]
             target = cache / namespace / fingerprint
             target.mkdir(parents=True)

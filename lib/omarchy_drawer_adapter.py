@@ -17,6 +17,9 @@ class AdaptationError(Exception):
     """The source does not satisfy Drawer's deliberately narrow contract."""
 
 
+ADAPTER_VERSION = "drawer-adapter-v3"
+
+
 @dataclass(frozen=True)
 class Token:
     value: str
@@ -166,7 +169,11 @@ def transform_qml(source: str) -> str:
     replacements: list[tuple[int, int, str]] = [
         (root.open_token.end, root.open_token.end, "\n  property var drawerHost: null"),
         (host.type_token.start, host.type_token.end, "DrawerPanelHost"),
-        (host.open_token.end, host.open_token.end, f"\n    drawerHost: {root_id}.drawerHost\n    page: {root_id}"),
+        (
+            host.open_token.end,
+            host.open_token.end,
+            f"\n    anchors.fill: parent\n    drawerHost: {root_id}.drawerHost\n    page: {root_id}",
+        ),
     ]
 
     manage_ipc = direct_property(token_list, root, "manageIpc")
@@ -255,7 +262,7 @@ def completed_artifact(destination: Path, generated_source: Path, fingerprint: s
         return False
     if not destination.is_dir() or not generated_source.is_file() or not marker.is_file():
         return False
-    return marker.read_text(encoding="utf-8") == f"drawer-adapter-v2\n{fingerprint}\n"
+    return marker.read_text(encoding="utf-8") == f"{ADAPTER_VERSION}\n{fingerprint}\n"
 
 
 def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, adapter_dir: Path) -> Path:
@@ -279,7 +286,7 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
     source_digest = source_tree_digest(source_dir)
     transformed = transform_qml(entry_source.read_text(encoding="utf-8"))
     namespace = hashlib.sha256(plugin_id.encode("utf-8")).hexdigest()[:24]
-    fingerprint = hashlib.sha256((source_digest + "\0drawer-adapter-v2").encode()).hexdigest()[:24]
+    fingerprint = hashlib.sha256((source_digest + "\0" + ADAPTER_VERSION).encode()).hexdigest()[:24]
     destination = cache_root / namespace / fingerprint
     generated_source = destination / entry_source.relative_to(source_dir)
     safe_directory(cache_root)
@@ -305,7 +312,7 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
                 raise AdaptationError(f"adapter helper is missing: {helper}")
             shutil.copy2(source_helper, output / helper)
         (output / ".omarchy-drawer-adapted").write_text(
-            f"drawer-adapter-v2\n{fingerprint}\n", encoding="utf-8"
+            f"{ADAPTER_VERSION}\n{fingerprint}\n", encoding="utf-8"
         )
 
         try:

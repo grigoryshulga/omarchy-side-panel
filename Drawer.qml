@@ -710,7 +710,10 @@ Item {
     Shortcut {
       sequence: "Escape"
       enabled: root.opened
-      context: Qt.WindowShortcut
+      // Embedded panels move active focus into their own key catchers. An
+      // application shortcut still reaches Drawer and provides one consistent
+      // close path in both normal and edit modes.
+      context: Qt.ApplicationShortcut
       onActivated: {
         if (root.catalogOpen) root.catalogOpen = false
         else root.close()
@@ -739,9 +742,9 @@ Item {
       anchors.rightMargin: root.barPosition === "right" ? root.barInset : 0
       anchors.bottomMargin: root.barPosition === "bottom" ? root.barInset : 0
       anchors.leftMargin: root.barPosition === "left" ? root.barInset : 0
-      color: root.transparentBackground ? Qt.rgba(0, 0, 0, 0.72) : Color.popups.background
+      color: root.transparentBackground ? "transparent" : Color.popups.background
       border.width: 1
-      border.color: Color.popups.border
+      border.color: root.transparentBackground ? "transparent" : Color.popups.border
 
       Item {
         id: keyCatcher
@@ -786,7 +789,7 @@ Item {
 
             Rectangle {
               id: settingsButton
-              visible: titleHover.containsMouse || root.settingsOpen
+              visible: titleRowHover.hovered || root.settingsOpen
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
@@ -800,7 +803,7 @@ Item {
 
             Rectangle {
               id: editButton
-              visible: titleHover.containsMouse || root.editing
+              visible: titleRowHover.hovered || root.editing
               anchors.right: pinButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
@@ -834,7 +837,7 @@ Item {
 
             Rectangle {
               id: pinButton
-              visible: titleHover.containsMouse || root.pinned
+              visible: titleRowHover.hovered || root.pinned
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               width: Math.round(Style.space(28))
@@ -868,15 +871,7 @@ Item {
               }
             }
 
-            MouseArea {
-              id: titleHover
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              hoverEnabled: true
-              z: -1
-            }
+            HoverHandler { id: titleRowHover }
 
           }
 
@@ -1213,38 +1208,25 @@ Item {
             id: pageCarousel
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(parent.width, Style.space(420))
-            height: Math.round(Style.space(34))
-            radius: height / 2
-            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+            width: pageDots.width + (root.editing ? pageAdd.width + Style.space(10) : 0)
+            height: Math.round(Style.space(24))
+            color: "transparent"
 
-            ListView {
+            Row {
+              id: pageDots
               anchors.left: parent.left
-              anchors.right: pageAdd.left
               anchors.verticalCenter: parent.verticalCenter
-              anchors.margins: Style.space(4)
-              height: parent.height - Style.space(8)
-              orientation: ListView.Horizontal
-              spacing: Style.space(4)
-              clip: true
-              model: root.drawerPages
-              delegate: Rectangle {
-                required property int index
-                required property var modelData
-                width: pageLabel.implicitWidth + Style.space(16)
-                height: parent.height
-                radius: height / 2
-                color: root.currentPage === index ? Style.selectedFillFor(root.foreground, Color.accent) : "transparent"
-                Text {
-                  id: pageLabel
-                  anchors.centerIn: parent
-                  text: (index + 1) + " " + String(modelData.title)
-                  color: root.foreground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
+              spacing: Style.space(8)
+              Repeater {
+                model: root.drawerPages
+                delegate: Rectangle {
+                  required property int index
+                  width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
+                  height: width
+                  radius: width / 2
+                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
                 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
               }
             }
 
@@ -1252,7 +1234,6 @@ Item {
               id: pageAdd
               visible: root.editing
               anchors.right: parent.right
-              anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
               text: "\uf067"
               color: root.foreground
@@ -1298,12 +1279,14 @@ Item {
       Rectangle {
         id: drawerResizeHandle
         visible: root.editing
-        anchors.right: root.verticalEdge && root.edge === "left" ? parent.right : undefined
-        anchors.left: root.verticalEdge && root.edge === "right" ? parent.left : undefined
-        anchors.bottom: !root.verticalEdge && root.edge === "top" ? parent.bottom : undefined
-        anchors.top: !root.verticalEdge && root.edge === "bottom" ? parent.top : undefined
-        width: root.verticalEdge ? Math.round(Style.space(8)) : parent.width
-        height: root.verticalEdge ? parent.height : Math.round(Style.space(8))
+        width: Math.round(root.verticalEdge ? Style.space(12) : Style.space(48))
+        height: Math.round(root.verticalEdge ? Style.space(48) : Style.space(12))
+        x: root.verticalEdge
+          ? (root.edge === "left" ? parent.width - width : 0)
+          : (parent.width - width) / 2
+        y: root.verticalEdge
+          ? (parent.height - height) / 2
+          : (root.edge === "top" ? parent.height - height : 0)
         color: drawerResizeMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
         z: 9
 
@@ -1481,7 +1464,7 @@ Item {
       Rectangle {
         anchors.centerIn: parent
         width: Math.min(parent.width - Style.space(36), Style.space(380))
-        height: Math.min(parent.height - Style.space(36), Style.space(360))
+        height: Math.min(parent.height - Style.space(36), Style.space(420))
         radius: Style.cornerRadius
         color: Color.popups.background
         border.width: 1
@@ -1510,10 +1493,10 @@ Item {
             Text {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              text: "\uf00d"
+              text: "Close"
               color: root.foreground
               font.family: Style.font.family
-              font.pixelSize: Style.font.subtitle
+              font.pixelSize: Style.font.caption
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = false }
             }
           }
@@ -1530,25 +1513,36 @@ Item {
             spacing: Style.space(8)
             Repeater {
               model: [
-                { edge: "left", icon: "\uef3a" },
-                { edge: "right", icon: "\uef3b" },
-                { edge: "top", icon: "\uf453" },
-                { edge: "bottom", icon: "\uf0489" }
+                { edge: "left", icon: "", label: "Left" },
+                { edge: "right", icon: "", label: "Right" },
+                { edge: "top", icon: "󱔓", label: "Top" },
+                { edge: "bottom", icon: "󱂩", label: "Bottom" }
               ]
               delegate: Rectangle {
                 required property var modelData
-                width: Math.round(Style.space(38))
-                height: width
-                radius: height / 2
+                width: Math.round(Style.space(62))
+                height: Math.round(Style.space(52))
+                radius: Style.cornerRadius / 2
                 color: root.edge === modelData.edge
                   ? Style.selectedFillFor(root.foreground, Color.accent)
                   : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-                Text {
+                Column {
                   anchors.centerIn: parent
-                  text: modelData.icon
-                  color: root.foreground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body
+                  spacing: Style.space(2)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.icon
+                    color: root.foreground
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.body
+                  }
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.label
+                    color: root.foreground
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
                 }
                 MouseArea {
                   anchors.fill: parent
@@ -1560,7 +1554,7 @@ Item {
           }
 
           Text {
-            text: "PAGE"
+            text: "PAGE NAME"
             color: root.foreground
             opacity: 0.6
             font.family: Style.font.family
@@ -1591,7 +1585,7 @@ Item {
               anchors.right: parent.right
               anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
-              text: "\uf1f8"
+              text: "Delete"
               color: root.foreground
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
@@ -1610,10 +1604,10 @@ Item {
               anchors.left: parent.left
               anchors.leftMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
-              text: "\uf2dc"
+              text: "Transparent background"
               color: root.foreground
               font.family: Style.font.family
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.bodySmall
             }
             Text {
               anchors.right: parent.right
