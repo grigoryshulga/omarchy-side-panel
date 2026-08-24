@@ -786,6 +786,9 @@ Item {
         break
       }
     }
+    // Reload adapted panels after their previous instances have been closed.
+    panelEpoch += 1
+    if (opened) adaptPreferredPanels()
   }
   Component.onCompleted: {
     drawerPages = pagesFromSettings()
