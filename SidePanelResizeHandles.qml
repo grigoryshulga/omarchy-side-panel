@@ -20,6 +20,11 @@ Item {
   signal resizeFinished()
   signal resizeCanceled()
 
+  // This Item is a sibling of the Side Panel body. Its own stacking level,
+  // rather than the levels of its children, must place both resize handles
+  // above the body.
+  z: 12
+
   function pointerPosition(handle, mouse) {
     var point = handle.mapToGlobal(mouse.x, mouse.y)
     return root.verticalEdge ? point.x : point.y
