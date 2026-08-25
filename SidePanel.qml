@@ -584,6 +584,11 @@ Item {
     sidePanelResizeStart = position
     sidePanelResizeStartExtent = startExtent
     sidePanelResizePreview = startExtent
+    if (reservesSpace && !verticalEdge && axis === "edge")
+      console.info("[DEBUG-reserve-horizontal-resize] begin edge=" + edge
+        + " position=" + position + " extent=" + startExtent
+        + " surfaceHeight=" + surface.height
+        + " screenHeight=" + (surface.screen ? surface.screen.height : "none"))
   }
 
   function updateSidePanelResize(position) {
@@ -596,6 +601,12 @@ Item {
     var axis = sidePanelResizeAxis
     var snappedExtent = Math.round((sidePanelResizeStartExtent + delta) / 5) * 5
     sidePanelResizePreview = boundedSidePanelExtent(snappedExtent, axis)
+    if (reservesSpace && !verticalEdge && axis === "edge")
+      console.info("[DEBUG-reserve-horizontal-resize] update edge=" + edge
+        + " position=" + position + " delta=" + delta
+        + " preview=" + sidePanelResizePreview
+        + " surfaceHeight=" + surface.height
+        + " maximum=" + sidePanelResizeMaximum(axis))
   }
 
   function finishSidePanelResize() {
