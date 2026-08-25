@@ -7,6 +7,8 @@ var MAX_PAGE_TITLE_LENGTH = 80
 var MAX_ITEM_ID_LENGTH = 160
 var MAX_ITEM_LABEL_LENGTH = 160
 var MAX_ITEM_ICON_LENGTH = 32
+var MAX_EDGE_SIZE = 4096
+var MAX_ITEM_EXTENT = 4096
 
 function finiteNumber(value, fallback) {
   var number = Number(value)
@@ -18,9 +20,18 @@ function boundedString(value, maximum) {
   return string.length > maximum ? string.slice(0, maximum) : string
 }
 
+function normalizedExtent(value, maximum) {
+  var extent = finiteNumber(value, 0)
+  return extent > 0 ? Math.min(extent, maximum) : 0
+}
+
 function normalizedHeight(value) {
-  var height = finiteNumber(value, 0)
-  return height > 0 ? height : 0
+  return normalizedExtent(value, MAX_ITEM_EXTENT)
+}
+
+function boundedEdgeSize(value, fallback) {
+  var edgeSize = normalizedExtent(value, MAX_EDGE_SIZE)
+  return edgeSize > 0 ? edgeSize : normalizedExtent(fallback, MAX_EDGE_SIZE)
 }
 
 function normalize(items, resolveId, maximum) {
@@ -92,8 +103,8 @@ function parseState(raw, defaults, resolveId) {
     }
     if (["left", "right", "top", "bottom"].indexOf(state.edge) >= 0) normalized.edge = state.edge
     if (["overlay", "reserve"].indexOf(state.layoutMode) >= 0) normalized.layoutMode = state.layoutMode
-    var edgeSize = finiteNumber(state.edgeSize, 0)
-    if (edgeSize > 0 && edgeSize <= 4096) normalized.edgeSize = edgeSize
+    var edgeSize = normalizedExtent(state.edgeSize, MAX_EDGE_SIZE)
+    if (edgeSize > 0) normalized.edgeSize = edgeSize
     return normalized
   } catch (error) {
     return null
@@ -125,8 +136,8 @@ function copy(items) {
 }
 
 function resizeHeight(startHeight, startY, currentY, minimum, step) {
-  var raw = Math.max(minimum, finiteNumber(startHeight + currentY - startY, minimum))
-  return Math.max(minimum, Math.round(raw / step) * step)
+  var raw = Math.min(MAX_ITEM_EXTENT, Math.max(minimum, finiteNumber(startHeight + currentY - startY, minimum)))
+  return Math.min(MAX_ITEM_EXTENT, Math.max(minimum, Math.round(raw / step) * step))
 }
 
 function move(items, sourceId, targetId, after) {
@@ -162,7 +173,13 @@ function copyPages(pages) {
 function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.side-panel" })
   for (var key in settings || ({})) {
-    if (key !== "id" && key !== "pages" && key !== "plugins" && key !== "transparentBackground") entry[key] = settings[key]
+    if (key === "id" || key === "pages" || key === "plugins" || key === "transparentBackground") continue
+    if (key === "edgeSize") {
+      var edgeSize = normalizedExtent(settings[key], MAX_EDGE_SIZE)
+      if (edgeSize > 0) entry[key] = edgeSize
+    } else {
+      entry[key] = settings[key]
+    }
   }
   entry.pages = copyPages(pages)
   return entry

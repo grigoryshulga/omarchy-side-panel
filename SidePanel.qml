@@ -60,7 +60,10 @@ Item {
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
-  readonly property real configuredExtent: Number(setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight))
+  readonly property real configuredExtent: SidePanelModel.boundedEdgeSize(
+    setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight),
+    verticalEdge ? sidePanelWidth : sidePanelHeight
+  )
   readonly property real sidePanelExtent: resizingSidePanel ? sidePanelResizePreview : configuredExtent
   readonly property color foreground: Color.popups.text
   readonly property color transparentTextForeground: Color.bar.text
@@ -239,6 +242,8 @@ Item {
   }
 
   function persistSidePanelSetting(name, value) {
+    if (name === "edgeSize")
+      value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
     var entry = SidePanelModel.persistedEntry(settings, sidePanelPages)
     entry[name] = value
     var overrides = ({})
@@ -259,6 +264,8 @@ Item {
     for (var index = 0; index < settingNames.length; index++) {
       var name = settingNames[index]
       var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
+      if (name === "edgeSize")
+        value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
       if (value !== undefined && value !== null) state[name] = value
     }
     sidePanelState = state
@@ -281,9 +288,8 @@ Item {
 
   function loadSavedSidePanelState() {
     stateReader.command = [
-      "sh", "-c",
-      "size=$(stat -c %s -- \"$1\") || exit 1; [ \"$size\" -le \"$2\" ] || exit 2; head -c \"$2\" -- \"$1\"",
-      "sh", statePath, String(SidePanelModel.MAX_STATE_BYTES)
+      "python3", pluginDir + "/bin/omarchy-side-panel-read-state",
+      statePath, String(SidePanelModel.MAX_STATE_BYTES)
     ]
     stateReader.running = true
   }
@@ -838,6 +844,8 @@ Item {
         root.loadSidePanelState(String(stateReaderOutput.text || ""))
       } else if (exitCode === 2) {
         console.warn("SidePanel: saved state exceeds the size limit")
+      } else if (exitCode === 3) {
+        console.warn("SidePanel: refusing unsafe saved state file")
       } else if (root.sidePanelPages.length > 0) {
         root.persistSidePanelState()
       }

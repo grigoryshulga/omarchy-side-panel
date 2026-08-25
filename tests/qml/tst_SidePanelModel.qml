@@ -21,6 +21,14 @@ TestCase {
     compare(items[0].embedding, "")
   }
 
+  function test_normalize_bounds_item_extents() {
+    var items = SidePanelModel.normalize([{ id: "one", height: Infinity, width: SidePanelModel.MAX_ITEM_EXTENT + 1 }], resolve)
+    compare(items[0].height, 0)
+    compare(items[0].width, SidePanelModel.MAX_ITEM_EXTENT)
+    compare(SidePanelModel.boundedEdgeSize(Infinity, 480), 480)
+    compare(SidePanelModel.boundedEdgeSize(SidePanelModel.MAX_EDGE_SIZE + 1, 480), SidePanelModel.MAX_EDGE_SIZE)
+  }
+
   function test_pages_preserve_names_and_migrate_the_legacy_plugin_list() {
     var legacy = SidePanelModel.pagesFromSettings({ plugins: [{ id: "one" }] }, [], resolve)
     compare(legacy.length, 1)
@@ -56,6 +64,15 @@ TestCase {
     compare(state.pages[0].title.length, SidePanelModel.MAX_PAGE_TITLE_LENGTH)
     compare(state.pages[0].items[0].label.length, SidePanelModel.MAX_ITEM_LABEL_LENGTH)
     compare(state.pages[0].items[0].icon.length, SidePanelModel.MAX_ITEM_ICON_LENGTH)
+
+    state = SidePanelModel.parseState(JSON.stringify({
+      version: 1,
+      pages: [{ items: [{ id: "one", height: SidePanelModel.MAX_ITEM_EXTENT + 1, width: SidePanelModel.MAX_ITEM_EXTENT + 1 }] }],
+      edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1
+    }), [], resolve)
+    compare(state.pages[0].items[0].height, SidePanelModel.MAX_ITEM_EXTENT)
+    compare(state.pages[0].items[0].width, SidePanelModel.MAX_ITEM_EXTENT)
+    compare(state.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
   }
 
   function test_move_and_resize_are_immutable() {
@@ -68,14 +85,23 @@ TestCase {
     compare(moved[2].width, 315)
     compare(SidePanelModel.resizeHeight(200, 10, -1000, 5, 5), 5)
     compare(SidePanelModel.resizeHeight(200, 10, 333, 5, 5), 525)
+    compare(SidePanelModel.resizeHeight(200, 10, SidePanelModel.MAX_ITEM_EXTENT * 2, 5, 5), SidePanelModel.MAX_ITEM_EXTENT)
   }
 
   function test_persisted_entry_uses_only_named_pages() {
     var entry = SidePanelModel.persistedEntry(
-      { id: "gshulga.side-panel", plugins: [{ id: "old" }], pages: [{ title: "Old" }], edge: "left", transparentBackground: true },
+      {
+        id: "gshulga.side-panel",
+        plugins: [{ id: "old" }],
+        pages: [{ title: "Old" }],
+        edge: "left",
+        edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1,
+        transparentBackground: true
+      },
       [{ title: "Main", items: [{ id: "one" }] }]
     )
     compare(entry.edge, "left")
+    compare(entry.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
     verify(entry.plugins === undefined)
     verify(entry.transparentBackground === undefined)
     compare(entry.pages.length, 1)
