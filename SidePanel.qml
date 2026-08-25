@@ -109,6 +109,8 @@ Item {
     : overlayGap + (barPosition === "left" ? barInset : 0)
   readonly property real sidePanelAvailableWidth: Math.max(0, surface.width - sidePanelInsetLeft - sidePanelInsetRight)
   readonly property real sidePanelAvailableHeight: Math.max(0, surface.height - sidePanelInsetTop - sidePanelInsetBottom)
+  readonly property real sidePanelResizeHitSlop: settingsOpen && panelResizeMode
+    ? Math.round(Style.space(16)) : 0
 
   function sidePanelResizeMaximum(axis) {
     // In Reserve Space mode the surface contracts together with the Side Panel,
@@ -169,11 +171,6 @@ Item {
       : (settings ? settings[name] : undefined)
     return value === undefined || value === null ? fallback : value
   }
-
-  Component.onCompleted: console.warn("[DEBUG-side-panel-screen] anchor=" + !!anchorWindow
-    + " anchorScreen=" + !!(anchorWindow && anchorWindow.screen)
-    + " screenCount=" + Quickshell.screens.length
-    + " selected=" + !!sidePanelScreen)
 
   function colorHex(colorValue) {
     var color = typeof colorValue === "string" ? Qt.color(colorValue) : colorValue
@@ -1392,11 +1389,15 @@ Item {
       Region {
         intersection: Intersection.Subtract
         x: root.verticalEdge && root.edge === "right"
-          ? outsideClickSurface.width - Math.min(root.sidePanelExtent, outsideClickSurface.width) : 0
+          ? outsideClickSurface.width - Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.width) : 0
         y: !root.verticalEdge && root.edge === "bottom"
-          ? outsideClickSurface.height - Math.min(root.sidePanelExtent, outsideClickSurface.height) : 0
-        width: root.verticalEdge ? Math.min(root.sidePanelExtent, outsideClickSurface.width) : outsideClickSurface.width
-        height: root.verticalEdge ? outsideClickSurface.height : Math.min(root.sidePanelExtent, outsideClickSurface.height)
+          ? outsideClickSurface.height - Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.height) : 0
+        width: root.verticalEdge
+          ? Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.width)
+          : outsideClickSurface.width
+        height: root.verticalEdge
+          ? outsideClickSurface.height
+          : Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.height)
       }
     }
 
