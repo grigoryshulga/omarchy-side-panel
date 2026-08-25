@@ -39,6 +39,12 @@ function boundedEdgeSize(value, fallback) {
   return edgeSize > 0 ? edgeSize : normalizedExtent(fallback, MAX_EDGE_SIZE)
 }
 
+function boundedExtent(value, minimum, maximum) {
+  var upper = Math.max(0, Math.min(MAX_EDGE_SIZE, finiteNumber(maximum, MAX_EDGE_SIZE)))
+  var lower = Math.max(0, Math.min(upper, finiteNumber(minimum, 0)))
+  return Math.max(lower, Math.min(upper, finiteNumber(value, lower)))
+}
+
 function normalize(items, resolveId, maximum) {
   var normalized = []
   var seen = ({})

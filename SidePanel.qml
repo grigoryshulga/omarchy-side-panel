@@ -84,11 +84,16 @@ Item {
     verticalEdge ? sidePanelWidth : sidePanelHeight
   )
   readonly property real sidePanelExtent: resizingSidePanel && sidePanelResizeAxis === "edge"
-    ? sidePanelResizePreview : configuredExtent
+    ? boundedSidePanelExtent(sidePanelResizePreview, "edge")
+    : boundedSidePanelExtent(configuredExtent, "edge")
   readonly property real configuredOverlayCrossExtent: SidePanelModel.boundedEdgeSize(setting("overlayCrossSize", 0), 0)
-  readonly property real overlayCrossExtent: !reservesSpace
-    ? (resizingSidePanel && sidePanelResizeAxis === "cross"
-      ? sidePanelResizePreview : configuredOverlayCrossExtent) : 0
+  readonly property real overlayCrossExtent: {
+    if (reservesSpace) return 0
+    var extent = resizingSidePanel && sidePanelResizeAxis === "cross"
+      ? sidePanelResizePreview : configuredOverlayCrossExtent
+    // Zero is the persisted value for filling the whole cross axis.
+    return extent > 0 ? boundedSidePanelExtent(extent, "cross") : 0
+  }
   readonly property string overlayAlignment: {
     var value = String(setting("overlayAlignment", "center")).toLowerCase()
     var options = verticalEdge ? ["top", "center", "bottom"] : ["left", "center", "right"]
@@ -104,6 +109,27 @@ Item {
     : overlayGap + (barPosition === "left" ? barInset : 0)
   readonly property real sidePanelAvailableWidth: Math.max(0, surface.width - sidePanelInsetLeft - sidePanelInsetRight)
   readonly property real sidePanelAvailableHeight: Math.max(0, surface.height - sidePanelInsetTop - sidePanelInsetBottom)
+
+  function sidePanelResizeMaximum(axis) {
+    // In Reserve Space mode the surface contracts together with the Side Panel,
+    // so use the physical screen for the edge-axis bound.
+    if (axis === "edge" && reservesSpace && surface.screen)
+      return Math.min(SidePanelModel.MAX_EDGE_SIZE, verticalEdge ? surface.screen.width : surface.screen.height)
+    var available = axis === "edge"
+      ? (verticalEdge ? sidePanelAvailableWidth : sidePanelAvailableHeight)
+      : (verticalEdge ? sidePanelAvailableHeight : sidePanelAvailableWidth)
+    return available > 0 ? Math.min(SidePanelModel.MAX_EDGE_SIZE, available) : SidePanelModel.MAX_EDGE_SIZE
+  }
+
+  function sidePanelResizeMinimum(axis) {
+    return Math.min(Style.space(260), sidePanelResizeMaximum(axis))
+  }
+
+  function boundedSidePanelExtent(value, axis) {
+    return SidePanelModel.boundedExtent(
+      value, sidePanelResizeMinimum(axis), sidePanelResizeMaximum(axis)
+    )
+  }
 
   function overlayCrossOffset(available) {
     if (overlayCrossExtent <= 0) return 0
@@ -472,8 +498,13 @@ Item {
   }
 
   function persistSidePanelSetting(name, value) {
-    if (name === "edgeSize" || name === "overlayCrossSize")
+    if (name === "edgeSize") {
       value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
+      value = boundedSidePanelExtent(value, "edge")
+    } else if (name === "overlayCrossSize") {
+      value = SidePanelModel.boundedEdgeSize(value, 0)
+      if (value > 0) value = boundedSidePanelExtent(value, "cross")
+    }
     var entry = SidePanelModel.persistedEntry(settings, sidePanelPages)
     entry[name] = value
     var overrides = ({})
@@ -562,17 +593,9 @@ Item {
     if (sidePanelResizeAxis === "cross"
         && ((verticalEdge && overlayAlignment === "bottom")
           || (!verticalEdge && overlayAlignment === "right"))) delta = -delta
-    var available = sidePanelResizeAxis === "edge"
-      ? (verticalEdge ? sidePanelAvailableWidth : sidePanelAvailableHeight)
-      : (verticalEdge ? sidePanelAvailableHeight : sidePanelAvailableWidth)
-    // A Reserve Space surface is only as large as the panel itself. Its
-    // current extent must not become the resize maximum, or shrinking once
-    // makes growing back impossible.
-    if (reservesSpace && sidePanelResizeAxis === "edge" && surface.screen)
-      available = verticalEdge ? surface.screen.width : surface.screen.height
-    var maximum = available > 0 ? Math.min(SidePanelModel.MAX_EDGE_SIZE, available) : SidePanelModel.MAX_EDGE_SIZE
-    var minimum = Math.min(Style.space(260), maximum)
-    sidePanelResizePreview = Math.round(Math.max(minimum, Math.min(maximum, sidePanelResizeStartExtent + delta)) / 5) * 5
+    var axis = sidePanelResizeAxis
+    var snappedExtent = Math.round((sidePanelResizeStartExtent + delta) / 5) * 5
+    sidePanelResizePreview = boundedSidePanelExtent(snappedExtent, axis)
   }
 
   function finishSidePanelResize() {
