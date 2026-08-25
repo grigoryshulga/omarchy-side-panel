@@ -271,12 +271,6 @@ Item {
     scrollPluginList(deltaX, deltaY)
   }
 
-  function handleAltVerticalWheel(deltaY) {
-    if (deltaY === 0) return false
-    movePage(deltaY > 0 ? 1 : -1)
-    return true
-  }
-
   function persistSidePanelSetting(name, value) {
     if (name === "edgeSize")
       value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
@@ -1563,6 +1557,20 @@ Item {
                   if (visible) root.currentPluginList = pluginList
                 }
 
+                // Keep this handler on the ListView itself: a horizontal
+                // ListView otherwise converts an ordinary vertical wheel into
+                // horizontal content scrolling before SidePanel can see Alt.
+                WheelHandler {
+                  id: altWheelPageNavigation
+                  objectName: "altWheelPageNavigation"
+                  acceptedModifiers: Qt.AltModifier
+                  onWheel: function(event) {
+                    if (event.angleDelta.y === 0) return
+                    root.movePage(event.angleDelta.y > 0 ? 1 : -1)
+                    event.accepted = true
+                  }
+                }
+
                 displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
             }
@@ -1821,22 +1829,6 @@ Item {
               }
             }
 
-            // This is intentionally owned by the common page container rather
-            // than an individual ListView. Cached pages remain alive, but there
-            // must be exactly one handler for Alt + a normal vertical wheel.
-            WheelHandler {
-              id: altWheelPageNavigation
-              objectName: "altWheelPageNavigation"
-              // Trackpads and some mice expose their ordinary scroll as a
-              // TouchPad device. Accept both, while ignoring a horizontal axis.
-              acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-              acceptedModifiers: Qt.AltModifier
-              orientation: Qt.Vertical
-              blocking: true
-              onWheel: function(event) {
-                if (root.handleAltVerticalWheel(event.angleDelta.y)) event.accepted = true
-              }
-            }
           }
 
           Rectangle {
