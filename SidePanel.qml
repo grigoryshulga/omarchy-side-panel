@@ -280,8 +280,9 @@ Item {
   }
 
   function finishPanelWarmup(item) {
-    if (resolvedPluginId(item) !== warmingPanelId) return
-    console.warn("[SP_WARMUP] finished id=" + warmingPanelId)
+    if (warmingPanelId === "") return
+    console.warn("[SP_WARMUP] finished queued=" + warmingPanelId
+                 + " loaded=" + resolvedPluginId(item))
     warmingPanelId = ""
     if (warmupQueue.length > 0) warmupTimer.restart()
   }
