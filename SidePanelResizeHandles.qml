@@ -25,8 +25,9 @@ Item {
   // above the body.
   z: 12
 
-  function pointerPosition(handle, mouse) {
+  function pointerPosition(handle, mouse, axis) {
     var point = handle.mapToGlobal(mouse.x, mouse.y)
+    if (axis === "cross") return root.verticalEdge ? point.y : point.x
     return root.verticalEdge ? point.x : point.y
   }
 
@@ -74,8 +75,8 @@ Item {
       hoverEnabled: true
       preventStealing: true
       cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
-      onPressed: function(mouse) { root.resizeStarted("edge", root.pointerPosition(edgeHandle, mouse)) }
-      onPositionChanged: function(mouse) { root.resizeUpdated(root.pointerPosition(edgeHandle, mouse)) }
+      onPressed: function(mouse) { root.resizeStarted("edge", root.pointerPosition(edgeHandle, mouse, "edge")) }
+      onPositionChanged: function(mouse) { root.resizeUpdated(root.pointerPosition(edgeHandle, mouse, "edge")) }
       onReleased: root.resizeFinished()
       onCanceled: root.resizeCanceled()
     }
@@ -104,8 +105,8 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
-      onPressed: function(mouse) { root.resizeStarted("cross", root.pointerPosition(crossHandle, mouse)) }
-      onPositionChanged: function(mouse) { root.resizeUpdated(root.pointerPosition(crossHandle, mouse)) }
+      onPressed: function(mouse) { root.resizeStarted("cross", root.pointerPosition(crossHandle, mouse, "cross")) }
+      onPositionChanged: function(mouse) { root.resizeUpdated(root.pointerPosition(crossHandle, mouse, "cross")) }
       onReleased: root.resizeFinished()
       onCanceled: root.resizeCanceled()
     }
