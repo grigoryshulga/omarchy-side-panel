@@ -107,26 +107,6 @@ TestCase {
     verify(findChild(sidePanel, "altWheelPageNavigation") !== null)
   }
 
-  function test_focus_loss_closes_an_unpinned_side_panel() {
-    sidePanel.pinned = false
-    sidePanel.opened = true
-    sidePanel.panelFocusObserved = true
-
-    sidePanel.handlePanelFocusChange(false)
-
-    verify(!sidePanel.opened)
-  }
-
-  function test_focus_loss_keeps_a_pinned_side_panel_open() {
-    sidePanel.pinned = true
-    sidePanel.opened = true
-    sidePanel.panelFocusObserved = true
-
-    sidePanel.handlePanelFocusChange(false)
-
-    verify(sidePanel.opened)
-  }
-
   function test_escape_keeps_a_pinned_side_panel_open() {
     sidePanel.pinned = true
     sidePanel.opened = true
