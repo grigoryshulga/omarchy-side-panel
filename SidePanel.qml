@@ -536,7 +536,10 @@ Item {
   }
 
   function resizePosition(handle, x, y) {
-    var point = handle.mapToItem(surface.contentItem, x, y)
+    // In Reserve Space the layer surface moves as its extent changes. Measure
+    // against the bar window instead so one pointer movement remains one delta.
+    var target = reservesSpace && anchorWindow ? anchorWindow.contentItem : surface.contentItem
+    var point = handle.mapToItem(target, x, y)
     return verticalEdge ? point.x : point.y
   }
 
@@ -2901,7 +2904,7 @@ Item {
             Repeater {
               model: [
                 { mode: "overlay", label: "Overlay" },
-                { mode: "reserve", label: "Push screen" }
+                { mode: "reserve", label: "Reserve Space" }
               ]
               delegate: Rectangle {
                 required property var modelData

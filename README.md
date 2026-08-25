@@ -59,13 +59,13 @@ Side Panel always retains at least one page.
 The Settings page provides these controls:
 
 - **Edge**: left, right, top, or bottom.
-- **Display mode**: **Overlay** floats over windows; **Push screen** reserves
+- **Display mode**: **Overlay** floats over windows; **Reserve Space** reserves
   edge space so windows use the remainder.
 - **Overlay alignment**: on a left or right Edge, align the Side Panel to the
   top, center, or bottom; on a top or bottom Edge, align it to the left, center,
   or right.
 - **Resize Panel**: enables the resize grips. Overlay has grips for both axes;
-  Push screen exposes only the grip that changes the Side Panel's edge extent.
+  Reserve Space exposes only the grip that changes the Side Panel's edge extent.
 - **Reveal at screen edge**: opens the Side Panel when the pointer rests at its
   configured Edge. It is enabled by default.
 - **Delay**: the pointer dwell time before edge reveal, from 0 to 2000 ms. The
