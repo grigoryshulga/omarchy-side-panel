@@ -4,9 +4,15 @@
   <img src="assets/banner.png" alt="Omarchy Side Panel" width="100%">
 </p>
 
-Omarchy Side Panel keeps selected plugin panels one click away without leaving
-them on screen all the time. Open it from the bar, put it on any screen edge,
-and group plugins into named Side Panel pages.
+Omarchy Side Panel is a configurable edge surface for the plugin panels you use
+most. Organize them into named Side Panel pages, open the surface from the bar
+or its screen edge, and keep the workspace clear when you do not need it.
+
+## Requirements
+
+- Omarchy with plugin support and a running Omarchy shell.
+- Python 3 for automatic embedding of supported standard panels. No third-party
+  Python packages are required.
 
 ## Install
 
@@ -14,76 +20,112 @@ and group plugins into named Side Panel pages.
 omarchy plugin add https://github.com/grigoryshulga/omarchy-side-panel.git --enable
 ```
 
-The plugin id is `gshulga.side-panel`. If Side Panel does not appear on the bar
-after installation, add it from Omarchy's bar-plugin settings.
+The plugin id is `gshulga.side-panel`. If its icon is not visible after
+installation, add **Side Panel** in Omarchy's bar-plugin settings.
 
-To remove it later:
+To remove it:
 
 ```bash
 omarchy plugin remove gshulga.side-panel
 ```
 
-## First use
+## Get started
 
-1. Click the Side Panel icon in the bar to open it.
-2. Hover the title and select the edit button.
-3. Select **Add Plugin**, choose an installed plugin, and add it to the current
-   Side Panel page. Side Panel enables the plugin when necessary.
-4. Select the edit button again to leave edit mode and use the embedded panels.
+1. Select the Side Panel icon in the bar.
+2. Hover the current Side Panel page title and choose **Edit**.
+3. Choose **Add Plugin**, then select an installed plugin for the current page.
+   Side Panel enables the plugin when necessary.
+4. Choose **Done** to leave Edit mode.
 
-Use the `+` beside the page dots to create another page. Double-click a page
-title in edit mode to rename it. The delete-page control is available once
-there is more than one page.
+Hover the page title to reveal the pencil, then click it (or use `Alt + R`) to
+rename the current Side Panel page. Create and remove pages in Edit mode; a
+Side Panel always retains at least one page.
 
-## Everyday controls
+## Using the Side Panel
 
-- Hover the title to reveal the pin, edit, and settings controls.
-- Pinning keeps the Side Panel open while another bar popout is active. It is
-  cleared when the Side Panel closes.
-- In edit mode, drag a plugin header to reorder items, use its delete button to
-  remove it, and use the item grip to resize it.
-- Drag the visible grip on the outer edge to resize the whole Side Panel.
-- Open the settings control to choose the Edge and Display mode:
-  - **Overlay** floats above existing windows.
-  - **Push screen** reserves edge space, so Hyprland lays out windows in the
-    remaining area.
-- In Omarchy's plugin settings, **Reveal at screen edge** controls pointer
-  reveal. **Edge reveal delay** defaults to 250 ms and can be set from 0 to
-  2000 ms.
+- Hover the title to reveal **? Shortcuts**, **Settings**, **Edit**, and **Pin**.
+  The action name expands on hover.
+- **Pin** keeps the Side Panel visible when focus changes, you click outside it,
+  or press `Escape`. Pinning lasts only until the Side Panel is closed.
+- Without Pin, changing focus or clicking outside closes the Side Panel.
+- In Edit mode, select a Side Panel item to focus it. Drag item headers to
+  reorder items, use the item controls to expand or remove them, and drag their
+  grips to resize them. Drag the outer-edge grip to resize the whole Side Panel.
+- The ordinary mouse wheel scrolls the hovered plugin panel. Hold `Alt` while
+  scrolling in either wheel direction to move between Side Panel pages.
 
-## Keyboard
+### Settings
 
-- `Escape`: close the Side Panel, or close the add-plugin catalog/settings
-  first.
-- `Alt+1` through `Alt+9`: open a Side Panel page by number.
-- `Alt+Left` / `Alt+Right`: previous / next Side Panel page.
-- `Ctrl+Tab` / `Ctrl+Shift+Tab`: move keyboard focus between embedded panels.
+The Settings page provides these controls:
 
-Once an embedded panel has focus, its own keyboard controls receive input.
+- **Edge**: left, right, top, or bottom.
+- **Display mode**: **Overlay** floats over windows; **Push screen** reserves
+  edge space so windows use the remainder.
+- **Reveal at screen edge**: opens the Side Panel when the pointer rests at its
+  configured Edge. It is enabled by default.
+- **Delay**: the pointer dwell time before edge reveal, from 0 to 2000 ms. The
+  default is 250 ms.
 
-## What can be shown in Side Panel?
+Omarchy's plugin settings also offer a transparent Side Panel background.
 
-Side Panel chooses the safest available integration for each selected plugin:
+## Keyboard shortcuts
 
-1. A plugin that provides an explicit `sidePanelPage` is loaded directly.
-2. A conventional Omarchy `KeyboardPanel` is automatically copied to a
-   disposable cache and adapted for the Side Panel.
-3. A plugin that cannot be embedded remains available through its native panel,
-   provided it is enabled.
+Select **? Shortcuts** in the Side Panel for this reference at any time.
 
-The automatic copy is stored under `$XDG_CACHE_HOME/omarchy-side-panel/`; it
-never modifies the installed plugin. The cache can be deleted after uninstalling
-Side Panel or whenever disk space is needed.
-
-## Preview
-
-| Left edge | Top edge |
+| Shortcut | Action |
 | --- | --- |
-| ![Left Side Panel showing agent controls](assets/screenshots/left-agents.png) | ![Top Side Panel showing compact plugin panels](assets/screenshots/top-agents.png) |
+| `Escape` | Close the add-plugin catalog, Settings, or shortcut help; otherwise close an unpinned Side Panel. |
+| `Alt + ?` | Open or close shortcut help. |
+| `Alt + S` | Open or close Settings. |
+| `Alt + P` | Pin or unpin the Side Panel. |
+| `Alt + E` | Enter or leave Edit mode. |
+| `Alt + R` | Rename the current Side Panel page. |
+| `Alt + 1` … `Alt + 9` | Switch to a numbered Side Panel page. |
+| `Alt + Left` / `Alt + Right` | Previous or next Side Panel page outside Edit mode. |
+| `Ctrl + Tab` / `Ctrl + Shift + Tab` | Focus the next or previous Side Panel item. |
 
-| Overlay mode | Transparent background |
+In Edit mode:
+
+| Shortcut | Action |
 | --- | --- |
-| ![Side Panel floating over windows](assets/screenshots/overlay-example.png) | ![Side Panel with a transparent background](assets/screenshots/transparent-example.png) |
+| `Alt + C` | Create a Side Panel page. |
+| `Alt + X` | Remove the current Side Panel page. |
+| `Alt + +` | Add a plugin. |
+| `Alt + -` | Remove the focused Side Panel item. |
+| `Alt + Space` | Expand or collapse the focused item. |
+| `Alt + Up` / `Alt + Down`, `Alt + K` / `Alt + J` | Move the focused item on a left or right Edge. |
+| `Alt + Left` / `Alt + Right`, `Alt + H` / `Alt + L` | Move the focused item on a top or bottom Edge. |
+| `Alt + Ctrl + Up` / `Alt + Ctrl + Down`, `Alt + Ctrl + K` / `Alt + Ctrl + J` | Resize focused item height on a left or right Edge. |
+| `Alt + Ctrl + Left` / `Alt + Ctrl + Right`, `Alt + Ctrl + H` / `Alt + Ctrl + L` | Resize focused item width on a top or bottom Edge. |
+
+When an embedded page has Panel focus, its own keyboard controls receive input.
+
+## Plugin compatibility
+
+Side Panel chooses the safest available integration for every selected plugin:
+
+1. A plugin with an explicit `sidePanelPage` is loaded as an embedded page.
+2. A supported conventional Omarchy `KeyboardPanel` is copied to a disposable
+   cache and adapted for the Side Panel.
+3. If embedding is unavailable, Side Panel can open the enabled plugin's native
+   panel instead.
+
+The automatic copy lives under `$XDG_CACHE_HOME/omarchy-side-panel/` and never
+changes the installed plugin. It is safe to delete after uninstalling Side Panel
+or when reclaiming disk space.
+
+Side Panel starts the current Side Panel page first, then warms the remaining
+embedded pages incrementally. Once loaded, embedded pages remain available until
+the Side Panel closes, avoiding reloads while switching pages or windows.
+
+## Limits and data
+
+Side Panel permits up to 12 Side Panel pages, 24 items per page, and 48 items
+in total. These limits keep persistent layout work and plugin loading bounded.
+
+Its configuration is maintained by Omarchy. Saved state is bounded and stored
+under the XDG state directory. Side Panel is an unsandboxed plugin running with
+your user permissions, so add only plugins you trust.
 
 ## For plugin authors
 
@@ -101,7 +143,7 @@ entry point alongside the existing bar widget:
 It must not create a `PanelWindow`, manage an overlay, or depend on a bar-icon
 anchor. Side Panel supplies `sidePanel`, `sidePanelItem`, `bar`, `settings`,
 `pluginId`, and `service` when matching writable properties exist. Alternatively,
-provide `initializeSidePanel(context)` to receive those values at once.
+provide `initializeSidePanel(context)` to receive these values together.
 
 ```qml
 import QtQuick
@@ -115,22 +157,18 @@ Item {
 }
 ```
 
-For the supported automatic-embedding shapes, transformation rules, and safety
+For supported automatic-embedding shapes, transformation rules, and safety
 boundaries, see [Automatic embedding](docs/automatic-embedding.md).
 
-## Requirements and data
+## Preview
 
-- Omarchy with plugin support and a running Omarchy shell.
-- Python 3 for automatic standard-panel embedding. No third-party Python
-  packages are required.
+| Left edge | Top edge |
+| --- | --- |
+| ![Left Side Panel showing agent controls](assets/screenshots/left-agents.png) | ![Top Side Panel showing compact plugin panels](assets/screenshots/top-agents.png) |
 
-Side Panel is an unsandboxed plugin and runs with the current user's
-permissions. Add only plugins you trust. Its configuration is maintained by
-Omarchy; its bounded saved state is stored in the XDG state directory.
-
-To keep the shell responsive, Side Panel allows at most 48 items in total. On
-open it starts the current Side Panel page first, then warms remaining embedded
-pages incrementally; warmed pages stay loaded until the Side Panel closes.
+| Overlay mode | Transparent background |
+| --- | --- |
+| ![Side Panel floating over windows](assets/screenshots/overlay-example.png) | ![Side Panel with a transparent background](assets/screenshots/transparent-example.png) |
 
 ## Development
 
