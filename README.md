@@ -183,8 +183,13 @@ Run these checks from the repository root:
 omarchy plugin validate .
 python3 -m unittest discover -s tests -p 'test_*.py'
 bash tests/adapter-smoke.sh
-qmltestrunner -input tests/qml -import .
+bash tests/qml-model.sh
 ```
+
+`qmltestrunner` in the system `PATH` can point to Qt 5. The project uses Qt 6,
+so the script explicitly selects the Qt 6 runner. The Side Panel lifecycle
+test requires a Quickshell-hosted integration harness and is not runnable by
+the standalone Qt test runner.
 
 The QML suite requires Omarchy's QML imports and a graphical session.
 

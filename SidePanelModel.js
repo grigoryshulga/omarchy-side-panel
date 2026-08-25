@@ -155,6 +155,9 @@ function copy(items) {
 
 function resizeHeight(startHeight, startY, currentY, minimum, step) {
   var raw = Math.min(MAX_ITEM_EXTENT, Math.max(minimum, finiteNumber(startHeight + currentY - startY, minimum)))
+  // MAX_ITEM_EXTENT is not necessarily aligned to the resize step. Preserve
+  // the configured upper bound instead of rounding it down to the last step.
+  if (raw === MAX_ITEM_EXTENT) return MAX_ITEM_EXTENT
   return Math.min(MAX_ITEM_EXTENT, Math.max(minimum, Math.round(raw / step) * step))
 }
 
