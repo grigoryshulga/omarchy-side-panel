@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Ui
 import "SidePanelModel.js" as SidePanelModel
 
 Item {
@@ -2119,6 +2120,82 @@ Item {
             }
           }
 
+          Text {
+            text: "EDGE REVEAL"
+            color: root.chromeForeground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            id: edgeRevealSettings
+            objectName: "edgeRevealSettings"
+            width: parent.width
+            height: Math.max(edgeRevealLabel.implicitHeight, edgeRevealToggle.implicitHeight)
+
+            Text {
+              id: edgeRevealLabel
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Reveal at screen edge"
+              color: root.chromeForeground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            ToggleSwitch {
+              id: edgeRevealToggle
+              objectName: "edgeRevealEnabledControl"
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              checked: root.edgeRevealConfigured
+              foreground: root.chromeForeground
+              onToggled: root.persistSidePanelSetting("edgeRevealEnabled", !root.edgeRevealConfigured)
+            }
+          }
+
+          Row {
+            width: parent.width
+            height: Math.max(edgeRevealDelayLabel.implicitHeight, edgeRevealDelayControl.implicitHeight)
+
+            Text {
+              id: edgeRevealDelayLabel
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Delay"
+              color: root.chromeForeground
+              opacity: root.edgeRevealConfigured ? 1 : 0.5
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              anchors.right: edgeRevealDelayControl.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "ms"
+              color: root.chromeForeground
+              opacity: root.edgeRevealConfigured ? 0.7 : 0.35
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+
+            NumberField {
+              id: edgeRevealDelayControl
+              objectName: "edgeRevealDelayControl"
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              value: root.edgeRevealDelayMs
+              from: 0
+              to: 2000
+              stepSize: 50
+              foreground: root.chromeForeground
+              enabled: root.edgeRevealConfigured
+              opacity: enabled ? 1 : 0.5
+              onModified: function(value) { root.persistSidePanelSetting("edgeRevealDelayMs", value) }
+            }
+          }
       }
     }
   }

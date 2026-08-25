@@ -88,4 +88,9 @@ TestCase {
     compare(sidePanel.edgeRevealConfigured, true)
     compare(sidePanel.edgeRevealDelayMs, 0)
   }
+
+  function test_edge_reveal_controls_are_available_in_side_panel_settings() {
+    verify(findChild(sidePanel, "edgeRevealEnabledControl") !== null)
+    verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
+  }
 }
