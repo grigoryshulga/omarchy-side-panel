@@ -192,6 +192,10 @@ TestCase {
     sidePanel.resizeFocusedPlugin(1)
     verify(sidePanel.panelHeight(sidePanel.focusedPlugin()) > initialHeight)
 
+    var initialWidth = sidePanel.panelWidth(sidePanel.focusedPlugin())
+    sidePanel.resizeFocusedPlugin(1, "width")
+    verify(sidePanel.panelWidth(sidePanel.focusedPlugin()) > initialWidth)
+
     sidePanel.moveFocusedPlugin(-1)
     compare(sidePanel.keyboardPluginIndex, 0)
     compare(sidePanel.pluginItems[0].id, "fixture-two")

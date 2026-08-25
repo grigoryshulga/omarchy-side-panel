@@ -30,6 +30,7 @@ Item {
   property string draggedId: ""
   property real dragWidth: 0
   property string resizingId: ""
+  property string resizingAxis: ""
   property real resizeStartExtent: 0
   property real resizeStartPosition: 0
   property real resizePreviewExtent: 0
@@ -387,7 +388,7 @@ Item {
     setExpanded(resolvedPluginId(pluginItems[keyboardPluginIndex]))
   }
 
-  function resizeFocusedPlugin(delta) {
+  function resizeFocusedPlugin(delta, axis) {
     if (!editing || delta === 0) return
     var item = focusedPlugin()
     if (!item) return
@@ -395,7 +396,8 @@ Item {
     if (index < 0) return
     var next = copyItems(pluginItems)
     var step = Math.round(Style.space(20))
-    if (verticalEdge)
+    var resizeAxis = axis || (verticalEdge ? "height" : "width")
+    if (resizeAxis === "height")
       next[index].height = SidePanelModel.resizeHeight(panelHeight(item), 0, delta * step, 5, 5)
     else
       next[index].width = SidePanelModel.resizeHeight(panelWidth(item), 0, delta * step, 5, 5)
@@ -582,44 +584,50 @@ Item {
   }
 
   function panelHeight(item) {
-    if (item && resizingId === item.id) return resizePreviewExtent
+    if (item && resizingId === item.id && resizingAxis === "height") return resizePreviewExtent
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
     return Math.max(5, Math.round(height))
   }
 
   function panelWidth(item) {
-    if (item && resizingId === item.id) return resizePreviewExtent
+    if (item && resizingId === item.id && resizingAxis === "width") return resizePreviewExtent
     var width = Number(item ? item.width : 0)
     if (!width) width = Style.space(360)
     return Math.max(5, Math.round(width))
   }
 
-  function beginResize(item, position) {
-    resizeStartExtent = verticalEdge ? panelHeight(item) : panelWidth(item)
+  function beginResize(item, axis, position) {
+    resizeStartExtent = axis === "height" ? panelHeight(item) : panelWidth(item)
     resizingId = item.id
+    resizingAxis = axis
     resizeStartPosition = position
     resizePreviewExtent = resizeStartExtent
   }
 
   function updateResize(position) {
     if (resizingId === "") return
-    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, position, 5, 5)
+    var adjustedPosition = position
+    if ((resizingAxis === "width" && verticalEdge && edge === "right")
+        || (resizingAxis === "height" && !verticalEdge && edge === "bottom"))
+      adjustedPosition = resizeStartPosition - (position - resizeStartPosition)
+    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, adjustedPosition, 5, 5)
   }
 
   function finishResize() {
     var index = itemIndex(resizingId)
     if (index >= 0) {
       var next = copyItems(pluginItems)
-      if (verticalEdge) next[index].height = resizePreviewExtent
-      else next[index].width = resizePreviewExtent
+      next[index][resizingAxis] = resizePreviewExtent
       persistItems(next)
     }
     resizingId = ""
+    resizingAxis = ""
   }
 
   function cancelResize() {
     resizingId = ""
+    resizingAxis = ""
     resizePreviewExtent = 0
   }
 
@@ -1492,14 +1500,14 @@ Item {
     Shortcut { sequence: "Alt+Right"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
     Shortcut { sequence: "Alt+L"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
 
-    Shortcut { sequence: "Alt+Ctrl+Up"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
-    Shortcut { sequence: "Alt+Ctrl+K"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
-    Shortcut { sequence: "Alt+Ctrl+Down"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
-    Shortcut { sequence: "Alt+Ctrl+J"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
-    Shortcut { sequence: "Alt+Ctrl+Right"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
-    Shortcut { sequence: "Alt+Ctrl+L"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
-    Shortcut { sequence: "Alt+Ctrl+Left"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
-    Shortcut { sequence: "Alt+Ctrl+H"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Ctrl+Up"; enabled: root.opened && root.editing && (root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1, "height") }
+    Shortcut { sequence: "Alt+Ctrl+K"; enabled: root.opened && root.editing && (root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1, "height") }
+    Shortcut { sequence: "Alt+Ctrl+Down"; enabled: root.opened && root.editing && (root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "height") }
+    Shortcut { sequence: "Alt+Ctrl+J"; enabled: root.opened && root.editing && (root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "height") }
+    Shortcut { sequence: "Alt+Ctrl+Right"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1, "width") }
+    Shortcut { sequence: "Alt+Ctrl+L"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1, "width") }
+    Shortcut { sequence: "Alt+Ctrl+Left"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "width") }
+    Shortcut { sequence: "Alt+Ctrl+H"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "width") }
 
     Rectangle {
       id: sidePanelBody
@@ -1949,7 +1957,7 @@ Item {
                 anchors.fill: parent
                 visible: pageIndex === root.currentPage
                 orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
-                clip: true
+                clip: root.reservesSpace
                 // A plugin without its own Flickable must still let its oversized
                 // panel scroll in SidePanel's viewport. Nested Flickables consume the
                 // wheel first, so their local scrolling is preserved.
@@ -1980,8 +1988,13 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
-              width: root.verticalEdge ? pluginList.width : root.panelWidth(pluginRow.plugin)
-              height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
+              width: root.verticalEdge
+                ? (!root.reservesSpace && Number(pluginRow.plugin.width) > 0 ? root.panelWidth(pluginRow.plugin) : pluginList.width)
+                : root.panelWidth(pluginRow.plugin)
+              height: root.verticalEdge
+                ? (root.editing ? header.height : 0) + content.height
+                : (!root.reservesSpace && Number(pluginRow.plugin.height) > 0
+                  ? (root.editing ? header.height : 0) + content.height : pluginList.height)
               z: root.draggedId === pluginId ? 3 : 1
 
               function focusPanel() {
@@ -2127,7 +2140,8 @@ Item {
                 anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
-                  ? (root.verticalEdge ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
+                  ? (root.verticalEdge || (!root.reservesSpace && Number(pluginRow.plugin.height) > 0)
+                    ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
                   : 0
                 clip: true
 
@@ -2207,11 +2221,11 @@ Item {
 
                 Rectangle {
                   id: resizeHandle
-                  visible: root.editing && pluginRow.expanded
-                  width: root.verticalEdge ? parent.width : Math.round(Style.space(8))
-                  height: root.verticalEdge ? Math.round(Style.space(8)) : parent.height
-                  x: root.verticalEdge ? 0 : parent.width - width
-                  y: root.verticalEdge ? parent.height - height : 0
+                  visible: root.editing && pluginRow.expanded && (root.verticalEdge || !root.reservesSpace)
+                  width: parent.width
+                  height: Math.round(Style.space(8))
+                  x: 0
+                  y: parent.height - height
                   color: resizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : "transparent"
@@ -2221,14 +2235,42 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     preventStealing: true
-                    cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
+                    cursorShape: Qt.SizeVerCursor
                     onPressed: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.beginResize(pluginRow.plugin, root.verticalEdge ? point.y : point.x)
+                      root.beginResize(pluginRow.plugin, "height", point.y)
                     }
                     onPositionChanged: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.updateResize(root.verticalEdge ? point.y : point.x)
+                      root.updateResize(point.y)
+                    }
+                    onReleased: root.finishResize()
+                    onCanceled: root.cancelResize()
+                  }
+                }
+
+                Rectangle {
+                  visible: root.editing && pluginRow.expanded && (!root.verticalEdge || !root.reservesSpace)
+                  width: Math.round(Style.space(8))
+                  height: parent.height
+                  x: parent.width - width
+                  y: 0
+                  color: widthResizeMouse.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : "transparent"
+                  MouseArea {
+                    id: widthResizeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.SizeHorCursor
+                    onPressed: function(mouse) {
+                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.beginResize(pluginRow.plugin, "width", point.x)
+                    }
+                    onPositionChanged: function(mouse) {
+                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.updateResize(point.x)
                     }
                     onReleased: root.finishResize()
                     onCanceled: root.cancelResize()
