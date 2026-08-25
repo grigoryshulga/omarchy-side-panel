@@ -101,5 +101,9 @@ TestCase {
 
     sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
     compare(sidePanel.currentPage, 0)
+
+    sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
+    compare(sidePanel.currentPage, 0)
+    verify(findChild(sidePanel, "altWheelPageNavigation") !== null)
   }
 }

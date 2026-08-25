@@ -1424,6 +1424,21 @@ Item {
             // bind this to contentHeight: that creates a ListView layout loop.
             cacheBuffer: 100000
 
+            // ListView consumes a normal vertical mouse wheel before the
+            // background MouseArea sees it, and on a horizontal Side Panel it
+            // turns that wheel into horizontal content scrolling. Intercept
+            // Alt+vertical wheel here, before that conversion happens.
+            WheelHandler {
+              id: altWheelPageNavigation
+              objectName: "altWheelPageNavigation"
+              acceptedModifiers: Qt.AltModifier
+              onWheel: function(event) {
+                if (event.angleDelta.y === 0) return
+                root.movePage(event.angleDelta.y > 0 ? 1 : -1)
+                event.accepted = true
+              }
+            }
+
             displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
             }
