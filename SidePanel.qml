@@ -1957,7 +1957,7 @@ Item {
                 anchors.fill: parent
                 visible: pageIndex === root.currentPage
                 orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
-                clip: root.reservesSpace
+                clip: true
                 // A plugin without its own Flickable must still let its oversized
                 // panel scroll in SidePanel's viewport. Nested Flickables consume the
                 // wheel first, so their local scrolling is preserved.
@@ -1993,7 +1993,7 @@ Item {
                 : root.panelWidth(pluginRow.plugin)
               height: root.verticalEdge
                 ? (root.editing ? header.height : 0) + content.height
-                : (!root.reservesSpace && Number(pluginRow.plugin.height) > 0
+                : (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0
                   ? (root.editing ? header.height : 0) + content.height : pluginList.height)
               z: root.draggedId === pluginId ? 3 : 1
 
@@ -2140,7 +2140,7 @@ Item {
                 anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
-                  ? (root.verticalEdge || (!root.reservesSpace && Number(pluginRow.plugin.height) > 0)
+                  ? (root.verticalEdge || (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0)
                     ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
                   : 0
                 clip: true
@@ -2228,7 +2228,7 @@ Item {
                   y: parent.height - height
                   color: resizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
-                    : "transparent"
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
 
                   MouseArea {
                     id: resizeMouse
@@ -2257,7 +2257,7 @@ Item {
                   y: 0
                   color: widthResizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
-                    : "transparent"
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
                   MouseArea {
                     id: widthResizeMouse
                     anchors.fill: parent
