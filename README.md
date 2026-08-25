@@ -167,9 +167,9 @@ boundaries, see [Automatic embedding](docs/automatic-embedding.md).
 
 ## Preview
 
-| Left edge | Top edge |
+| Overlay on the left edge | Overlay on the top edge |
 | --- | --- |
-| ![Left Side Panel showing agent controls](assets/screenshots/left-agents.png) | ![Top Side Panel showing compact plugin panels](assets/screenshots/top-agents.png) |
+| ![Compact Side Panel overlay on the left edge](assets/screenshots/overlay-left-small.png) | ![Side Panel overlay on the top edge](assets/screenshots/top-overlay-example.png) |
 
 | Overlay mode | Transparent background |
 | --- | --- |

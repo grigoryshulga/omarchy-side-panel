@@ -153,6 +153,12 @@ Item {
   property color transparentForeground: transparentTextForeground
   readonly property color chromeForeground: transparentBackground ? transparentForeground : foreground
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
+  // The BarWidget's QsWindow is briefly unavailable while the shell reloads.
+  // A PanelWindow without an explicit screen falls back to its own current
+  // size, which creates a resize binding loop in Reserve Space mode.
+  readonly property var sidePanelScreen: anchorWindow && anchorWindow.screen
+    ? anchorWindow.screen
+    : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
   readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-side-panel"
   readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/gshulga.side-panel.json"
@@ -584,11 +590,6 @@ Item {
     sidePanelResizeStart = position
     sidePanelResizeStartExtent = startExtent
     sidePanelResizePreview = startExtent
-    if (reservesSpace && !verticalEdge && axis === "edge")
-      console.info("[DEBUG-reserve-horizontal-resize] begin edge=" + edge
-        + " position=" + position + " extent=" + startExtent
-        + " surfaceHeight=" + surface.height
-        + " screenHeight=" + (surface.screen ? surface.screen.height : "none"))
   }
 
   function updateSidePanelResize(position) {
@@ -601,12 +602,6 @@ Item {
     var axis = sidePanelResizeAxis
     var snappedExtent = Math.round((sidePanelResizeStartExtent + delta) / 5) * 5
     sidePanelResizePreview = boundedSidePanelExtent(snappedExtent, axis)
-    if (reservesSpace && !verticalEdge && axis === "edge")
-      console.info("[DEBUG-reserve-horizontal-resize] update edge=" + edge
-        + " position=" + position + " delta=" + delta
-        + " preview=" + sidePanelResizePreview
-        + " surfaceHeight=" + surface.height
-        + " maximum=" + sidePanelResizeMaximum(axis))
   }
 
   function finishSidePanelResize() {
@@ -1343,7 +1338,7 @@ Item {
 
   PanelWindow {
     id: edgeRevealSurface
-    screen: root.anchorWindow ? root.anchorWindow.screen : null
+    screen: root.sidePanelScreen
     visible: root.edgeRevealEnabled && !root.opened
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
@@ -1378,7 +1373,7 @@ Item {
   PanelWindow {
     id: outsideClickSurface
     objectName: "outsideClickCapture"
-    screen: root.anchorWindow ? root.anchorWindow.screen : null
+    screen: root.sidePanelScreen
     visible: root.outsideClickCaptureEnabled()
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
@@ -1409,7 +1404,7 @@ Item {
 
   PanelWindow {
     id: surface
-    screen: root.anchorWindow ? root.anchorWindow.screen : null
+    screen: root.sidePanelScreen
     visible: root.opened
     color: "transparent"
     exclusionMode: root.reservesSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
@@ -2591,15 +2586,9 @@ Item {
         preventStealing: true
         cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
         onPressed: function(mouse) {
-          console.warn("[DEBUG-external-panel-resize] pressed edge=" + root.edge
-            + " vertical=" + root.verticalEdge + " reserve=" + root.reservesSpace
-            + " localY=" + mouse.y + " surfaceHeight=" + surface.height)
           root.beginSidePanelResize("edge", root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
         }
         onPositionChanged: function(mouse) {
-          console.warn("[DEBUG-external-panel-resize] moved edge=" + root.edge
-            + " vertical=" + root.verticalEdge + " reserve=" + root.reservesSpace
-            + " localY=" + mouse.y + " surfaceHeight=" + surface.height)
           root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
         }
         onReleased: root.finishSidePanelResize()
