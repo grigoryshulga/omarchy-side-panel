@@ -24,6 +24,7 @@ Item {
   property bool editing: false
   property bool catalogOpen: false
   property bool settingsOpen: false
+  property bool shortcutsOpen: false
   property bool renamingPage: false
   property string expandedId: ""
   property string draggedId: ""
@@ -567,6 +568,7 @@ Item {
     expandedId = keyboardPluginIndex >= 0 ? resolvedPluginId(pluginItems[keyboardPluginIndex]) : ""
     catalogOpen = false
     settingsOpen = false
+    shortcutsOpen = false
     panelEpoch += 1
   }
 
@@ -1005,6 +1007,8 @@ Item {
     opened = false
     pinned = false
     catalogOpen = false
+    settingsOpen = false
+    shortcutsOpen = false
     editing = false
     expandedId = ""
     renamingPage = false
@@ -1018,6 +1022,7 @@ Item {
   function handleEscape() {
     if (catalogOpen) catalogOpen = false
     else if (settingsOpen) settingsOpen = false
+    else if (shortcutsOpen) shortcutsOpen = false
     else if (!pinned) close()
   }
 
@@ -1421,9 +1426,27 @@ Item {
     Shortcut { sequence: "Ctrl+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(-1) }
 
-    Shortcut { sequence: "Alt+S"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.settingsOpen = !root.settingsOpen }
+    Shortcut {
+      sequence: "Alt+S"
+      enabled: root.opened
+      context: Qt.WindowShortcut
+      onActivated: {
+        root.shortcutsOpen = false
+        root.settingsOpen = !root.settingsOpen
+      }
+    }
+    Shortcut {
+      sequence: "Alt+?"
+      enabled: root.opened
+      context: Qt.WindowShortcut
+      onActivated: {
+        root.settingsOpen = false
+        root.shortcutsOpen = !root.shortcutsOpen
+      }
+    }
     Shortcut { sequence: "Alt+P"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.pinned = !root.pinned }
     Shortcut { sequence: "Alt+E"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.setEditing(!root.editing) }
+    Shortcut { sequence: "Alt+R"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.beginPageRename() }
     Shortcut { sequence: "Alt+X"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeCurrentPage() }
     Shortcut { sequence: "Alt+C"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.addPage() }
     Shortcut { sequence: "Alt++"; enabled: root.opened && root.editing && !root.sidePanelItemLimitReached; context: Qt.WindowShortcut; onActivated: root.catalogOpen = true }
@@ -1485,7 +1508,7 @@ Item {
           }
         }
         Item {
-          visible: !root.settingsOpen
+          visible: !root.settingsOpen && !root.shortcutsOpen
           anchors.fill: parent
           anchors.margins: Style.space(14)
 
@@ -1499,7 +1522,7 @@ Item {
               id: pageTitleAction
               visible: !root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? removePageButton.left : settingsButton.left
+              anchors.right: root.editing ? removePageButton.left : shortcutsButton.left
               anchors.rightMargin: Style.space(8)
               height: parent.height
 
@@ -1563,7 +1586,7 @@ Item {
               id: pageTitleInput
               visible: root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? removePageButton.left : settingsButton.left
+              anchors.right: root.editing ? removePageButton.left : shortcutsButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
@@ -1612,7 +1635,67 @@ Item {
                 }
               }
 
-              MouseArea { id: settingsHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = true }
+              MouseArea {
+                id: settingsHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.shortcutsOpen = false
+                  root.settingsOpen = true
+                }
+              }
+            }
+
+            Rectangle {
+              id: shortcutsButton
+              objectName: "shortcutsButton"
+              visible: !root.editing && (titleRowHover.hovered || root.shortcutsOpen)
+              anchors.right: settingsButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              readonly property bool expanded: shortcutsHover.containsMouse
+              width: expanded ? Math.round(Style.space(112)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
+              radius: height / 2
+              clip: true
+              color: shortcutsHover.containsMouse
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
+                anchors.centerIn: parent
+                spacing: Style.space(5)
+                Text {
+                  text: "?"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+                Text {
+                  visible: shortcutsButton.expanded
+                  text: "Shortcuts"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              MouseArea {
+                id: shortcutsHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.settingsOpen = false
+                  root.shortcutsOpen = true
+                }
+              }
             }
 
             Rectangle {
@@ -2710,6 +2793,182 @@ Item {
               onModified: function(value) { root.persistSidePanelSetting("edgeRevealDelayMs", value) }
             }
           }
+      }
+    }
+
+    Item {
+      id: shortcutsPage
+      objectName: "shortcutsPage"
+      anchors.fill: sidePanelBody
+      visible: root.shortcutsOpen
+      z: 11
+
+      Column {
+        anchors.fill: parent
+        anchors.margins: Style.space(14)
+        spacing: Style.space(12)
+
+        Item {
+          width: parent.width
+          height: Math.max(shortcutsTitle.implicitHeight, shortcutsClose.height)
+
+          Text {
+            id: shortcutsTitle
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: "SHORTCUTS"
+            color: root.chromeForeground
+            font.family: Style.font.family
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+
+          Rectangle {
+            id: shortcutsClose
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            readonly property bool expanded: shortcutsCloseHover.containsMouse
+            width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
+            height: Math.round(Style.space(28))
+            radius: height / 2
+            clip: true
+            color: shortcutsCloseHover.containsMouse
+              ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+              : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+            Behavior on width {
+              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(5)
+              Text {
+                text: "\uf00d"
+                color: root.chromeForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+              Text {
+                visible: shortcutsClose.expanded
+                text: "Close"
+                color: root.chromeForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+            }
+
+            MouseArea {
+              id: shortcutsCloseHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.shortcutsOpen = false
+            }
+          }
+        }
+
+        Text {
+          width: parent.width
+          text: "Use these shortcuts while the Side Panel is open. H, J, K and L mirror the arrow keys."
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          color: root.chromeForeground
+          opacity: 0.7
+          font.family: Style.font.family
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Flickable {
+          id: shortcutsFlickable
+          width: parent.width
+          height: parent.height - y
+          clip: true
+          contentWidth: width
+          contentHeight: shortcutsList.height
+          boundsBehavior: Flickable.StopAtBounds
+
+          Column {
+            id: shortcutsList
+            width: shortcutsFlickable.width
+            spacing: Style.space(2)
+
+            Repeater {
+              model: [
+                { section: "GENERAL" },
+                { keys: "Alt + S", action: "Open or close Settings" },
+                { keys: "Alt + ?", action: "Open or close this help page" },
+                { keys: "Alt + P", action: "Pin or unpin the Side Panel" },
+                { keys: "Alt + E", action: "Enter or leave Edit mode" },
+                { keys: "Alt + R", action: "Rename the current Side Panel page" },
+                { keys: "Alt + 1…9", action: "Switch Side Panel page" },
+                { keys: "Alt + ← / →", action: "Previous or next page" },
+                { keys: "Ctrl + Tab", action: "Focus next Side Panel item" },
+                { keys: "Ctrl + Shift + Tab", action: "Focus previous Side Panel item" },
+                { section: "EDIT MODE" },
+                { keys: "Alt + C", action: "Create a Side Panel page" },
+                { keys: "Alt + X", action: "Remove the current Side Panel page" },
+                { keys: "Alt + +", action: "Add a plugin" },
+                { keys: "Alt + -", action: "Remove the focused Side Panel item" },
+                { keys: "Alt + Space", action: "Expand or collapse the focused item" },
+                { keys: "Alt + ↑ / ↓, K / J", action: "Move the focused item vertically" },
+                { keys: "Alt + ← / →, H / L", action: "Move the focused item horizontally" },
+                { keys: "Alt + Ctrl + ↑ / ↓, K / J", action: "Resize the focused item height" },
+                { keys: "Alt + Ctrl + ← / →, H / L", action: "Resize the focused item width" }
+              ]
+
+              delegate: Item {
+                required property var modelData
+                width: shortcutsList.width
+                height: modelData.section
+                  ? Math.round(Style.space(28))
+                  : Math.max(Math.round(Style.space(34)), shortcutAction.implicitHeight + Style.space(10))
+
+                Text {
+                  visible: !!parent.modelData.section
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.section || ""
+                  color: root.chromeForeground
+                  opacity: 0.6
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+
+                Text {
+                  id: shortcutKeys
+                  visible: !parent.modelData.section
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.min(Math.round(Style.space(174)), parent.width * 0.52)
+                  text: parent.modelData.keys || ""
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                Text {
+                  id: shortcutAction
+                  visible: !parent.modelData.section
+                  anchors.left: shortcutKeys.right
+                  anchors.leftMargin: Style.space(10)
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.action || ""
+                  textFormat: Text.PlainText
+                  wrapMode: Text.WordWrap
+                  color: root.chromeForeground
+                  opacity: 0.72
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

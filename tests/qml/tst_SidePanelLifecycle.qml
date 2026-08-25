@@ -104,6 +104,17 @@ TestCase {
     verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
   }
 
+  function test_shortcuts_page_is_available_and_escape_closes_it() {
+    verify(findChild(sidePanel, "shortcutsButton") !== null)
+    verify(findChild(sidePanel, "shortcutsPage") !== null)
+
+    sidePanel.shortcutsOpen = true
+    verify(sidePanel.shortcutsOpen)
+    sidePanel.handleEscape()
+    verify(!sidePanel.shortcutsOpen)
+    verify(sidePanel.opened)
+  }
+
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
     sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
