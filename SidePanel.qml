@@ -536,10 +536,9 @@ Item {
   }
 
   function resizePosition(handle, x, y) {
-    // In Reserve Space the layer surface moves as its extent changes. Measure
-    // against the bar window instead so one pointer movement remains one delta.
-    var target = reservesSpace && anchorWindow ? anchorWindow.contentItem : surface.contentItem
-    var point = handle.mapToItem(target, x, y)
+    // Layer surfaces can move while their reserved extent changes. Global
+    // coordinates stay fixed across separate QML windows in both display modes.
+    var point = handle.mapToGlobal(x, y)
     return verticalEdge ? point.x : point.y
   }
 
