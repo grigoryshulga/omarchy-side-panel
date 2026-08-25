@@ -139,6 +139,21 @@ TestCase {
     compare(sidePanel.panelRevealOffsetY, 0)
   }
 
+  function test_horizontal_edges_use_vertical_page_dots() {
+    var horizontalDots = findChild(sidePanel, "pageDotsHorizontal")
+    var verticalDots = findChild(sidePanel, "pageDotsVertical")
+    verify(horizontalDots !== null)
+    verify(verticalDots !== null)
+
+    sidePanel.edge = "left"
+    verify(horizontalDots.visible)
+    verify(!verticalDots.visible)
+
+    sidePanel.edge = "top"
+    verify(!horizontalDots.visible)
+    verify(verticalDots.visible)
+  }
+
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
     sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)

@@ -1934,9 +1934,11 @@ Item {
             id: pageListHost
             anchors.top: titleRow.bottom
             anchors.topMargin: Style.space(10)
-            anchors.bottom: pageCarousel.top
-            anchors.bottomMargin: Style.space(8)
-            width: parent.width
+            anchors.left: parent.left
+            anchors.right: root.verticalEdge ? parent.right : pageCarousel.left
+            anchors.rightMargin: root.verticalEdge ? 0 : Style.space(8)
+            anchors.bottom: root.verticalEdge ? pageCarousel.top : parent.bottom
+            anchors.bottomMargin: root.verticalEdge ? Style.space(8) : 0
             Repeater {
               model: root.sidePanelPages
               delegate: ListView {
@@ -2252,16 +2254,45 @@ Item {
 
           Rectangle {
             id: pageCarousel
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: pageDots.width + (root.editing ? pageAdd.width + Style.space(10) : 0)
-            height: Math.round(Style.space(24))
+            objectName: "pageCarousel"
+            anchors.bottom: root.verticalEdge ? parent.bottom : undefined
+            anchors.horizontalCenter: root.verticalEdge ? parent.horizontalCenter : undefined
+            anchors.right: root.verticalEdge ? undefined : parent.right
+            anchors.verticalCenter: root.verticalEdge ? undefined : parent.verticalCenter
+            width: root.verticalEdge
+              ? pageDots.width + (root.editing ? pageAdd.width + Style.space(10) : 0)
+              : Math.max(pageDotsVertical.width, root.editing ? pageAdd.width : 0)
+            height: root.verticalEdge
+              ? Math.round(Style.space(24))
+              : pageDotsVertical.height + (root.editing ? pageAdd.height + Style.space(10) : 0)
             color: "transparent"
 
             Row {
               id: pageDots
+              objectName: "pageDotsHorizontal"
+              visible: root.verticalEdge
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(8)
+              Repeater {
+                model: root.sidePanelPages
+                delegate: Rectangle {
+                  required property int index
+                  width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
+                  height: width
+                  radius: width / 2
+                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
+                }
+              }
+            }
+
+            Column {
+              id: pageDotsVertical
+              objectName: "pageDotsVertical"
+              visible: !root.verticalEdge
+              anchors.top: parent.top
+              anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(8)
               Repeater {
                 model: root.sidePanelPages
@@ -2279,8 +2310,10 @@ Item {
             Rectangle {
               id: pageAdd
               visible: root.editing
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
+              anchors.right: root.verticalEdge ? parent.right : undefined
+              anchors.verticalCenter: root.verticalEdge ? parent.verticalCenter : undefined
+              anchors.bottom: root.verticalEdge ? undefined : parent.bottom
+              anchors.horizontalCenter: root.verticalEdge ? undefined : parent.horizontalCenter
               readonly property bool expanded: pageAddHover.containsMouse
               width: expanded ? Math.round(Style.space(102)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
