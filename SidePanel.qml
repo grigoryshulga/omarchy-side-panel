@@ -1272,6 +1272,9 @@ Item {
         anchors.fill: parent
         z: -1
         onWheel: function(wheel) {
+          console.warn("[SP_WHEEL] fallback angle=" + wheel.angleDelta.x + "," + wheel.angleDelta.y
+                       + " pixel=" + wheel.pixelDelta.x + "," + wheel.pixelDelta.y
+                       + " modifiers=" + wheel.modifiers)
           root.handlePanelWheel(wheel.modifiers, wheel.angleDelta.x, wheel.angleDelta.y)
           wheel.accepted = true
         }
@@ -1573,6 +1576,10 @@ Item {
                         acceptedModifiers: Qt.AltModifier
                         orientation: Qt.Vertical
                         onWheel: function(event) {
+                          console.warn("[SP_WHEEL] page-handler page=" + pluginList.pageIndex
+                                       + " angle=" + event.angleDelta.x + "," + event.angleDelta.y
+                                       + " pixel=" + event.pixelDelta.x + "," + event.pixelDelta.y
+                                       + " modifiers=" + event.modifiers)
                           if (event.angleDelta.y === 0) return
                           root.movePage(event.angleDelta.y > 0 ? 1 : -1)
                           event.accepted = true
