@@ -41,11 +41,15 @@ Item {
   property var openedToplevel: null
   property bool focusDismissalArmed: false
   property var sidePanelPages: []
-  property var loadedPageIndexes: []
+  property var warmedPanelIds: []
+  property var warmupQueue: []
+  property string warmingPanelId: ""
   property var currentPluginList: null
   property int currentPage: 0
   readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
     ? sidePanelPages[currentPage].items : []
+  readonly property int sidePanelItemCount: countSidePanelItems()
+  readonly property bool sidePanelItemLimitReached: sidePanelItemCount >= SidePanelModel.MAX_TOTAL_ITEMS
   property var adaptedUrls: ({})
   property string adaptingId: ""
   property var adaptationErrors: ({})
@@ -177,20 +181,104 @@ Item {
   function selectPage(index) {
     if (index < 0 || index >= sidePanelPages.length || index === currentPage) return
     currentPage = index
-    markPageLoaded(index)
+    enqueuePageWarmup(index, true)
+    advancePanelWarmup()
     keyboardPluginIndex = -1
     expandedId = ""
     renamingPage = false
     persistSidePanelState()
   }
 
-  function pageIsLoaded(index) { return loadedPageIndexes.indexOf(index) >= 0 }
+  function countSidePanelItems() {
+    var count = 0
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++)
+      count += (sidePanelPages[pageIndex].items || []).length
+    return count
+  }
 
-  function markPageLoaded(index) {
-    if (index < 0 || pageIsLoaded(index)) return
-    var next = loadedPageIndexes.slice()
-    next.push(index)
-    loadedPageIndexes = next
+  function panelIsWarmed(item) {
+    return warmedPanelIds.indexOf(resolvedPluginId(item)) >= 0
+  }
+
+  function pageIsLoaded(index) {
+    var page = sidePanelPages[index]
+    if (!page) return false
+    var items = page.items || []
+    for (var itemIndex = 0; itemIndex < items.length; itemIndex++)
+      if (!panelIsWarmed(items[itemIndex])) return false
+    return true
+  }
+
+  function itemForPanelId(id) {
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++) {
+      var items = sidePanelPages[pageIndex].items || []
+      for (var itemIndex = 0; itemIndex < items.length; itemIndex++)
+        if (resolvedPluginId(items[itemIndex]) === id) return items[itemIndex]
+    }
+    return null
+  }
+
+  function enqueuePageWarmup(index, prioritize) {
+    var page = sidePanelPages[index]
+    if (!opened || !page) return
+    var requested = []
+    var items = page.items || []
+    for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      var id = resolvedPluginId(items[itemIndex])
+      if (!panelIsWarmed(items[itemIndex]) && warmingPanelId !== id && requested.indexOf(id) < 0)
+        requested.push(id)
+    }
+    var remaining = []
+    for (var queueIndex = 0; queueIndex < warmupQueue.length; queueIndex++)
+      if (requested.indexOf(warmupQueue[queueIndex]) < 0) remaining.push(warmupQueue[queueIndex])
+    warmupQueue = prioritize ? requested.concat(remaining) : remaining.concat(requested)
+    if (warmupQueue.length > 0 && warmingPanelId === "") warmupTimer.restart()
+  }
+
+  function enqueueAllPanelWarmups() {
+    enqueuePageWarmup(currentPage, true)
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++)
+      if (pageIndex !== currentPage) enqueuePageWarmup(pageIndex, false)
+    advancePanelWarmup()
+  }
+
+  function resetPanelWarmup() {
+    warmupTimer.stop()
+    warmedPanelIds = []
+    warmupQueue = []
+    warmingPanelId = ""
+  }
+
+  function advancePanelWarmup() {
+    if (!opened || warmingPanelId !== "") {
+      warmupTimer.stop()
+      return
+    }
+    while (warmupQueue.length > 0) {
+      var id = warmupQueue[0]
+      warmupQueue = warmupQueue.slice(1)
+      var item = itemForPanelId(id)
+      if (!item || panelIsWarmed(item)) continue
+      if (panelUrl(item) === "") {
+        if (canAdapt(item) && !adaptationFailed(item)) {
+          warmupQueue = [id].concat(warmupQueue)
+          adaptPreferredPanels()
+          return
+        }
+        warmedPanelIds = warmedPanelIds.concat([id])
+        continue
+      }
+      warmedPanelIds = warmedPanelIds.concat([id])
+      warmingPanelId = id
+      return
+    }
+    warmupTimer.stop()
+  }
+
+  function finishPanelWarmup(item) {
+    if (resolvedPluginId(item) !== warmingPanelId) return
+    warmingPanelId = ""
+    if (warmupQueue.length > 0) warmupTimer.restart()
   }
 
   function movePage(delta) {
@@ -314,7 +402,7 @@ Item {
       return
     }
     deactivateActivePanels("state-load")
-    loadedPageIndexes = []
+    resetPanelWarmup()
     currentPluginList = null
     sidePanelState = state
     sidePanelPages = state.pages
@@ -541,7 +629,7 @@ Item {
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || hasPlugin(id) || id === "gshulga.side-panel") return
+    if (id === "" || hasPlugin(id) || sidePanelItemLimitReached || id === "gshulga.side-panel") return
     var manifest = pluginFor(id)
     if (!manifest) return
     var next = copyItems(pluginItems)
@@ -554,6 +642,8 @@ Item {
     enablePluginForSidePanel(id, manifest)
     catalogOpen = false
     setExpanded(id)
+    enqueuePageWarmup(currentPage, true)
+    adaptPreferredPanels()
   }
 
   function enablePluginForSidePanel(id, manifest) {
@@ -873,7 +963,7 @@ Item {
   onSettingsChanged: {
     cancelEdgeReveal()
     deactivateActivePanels("settings-change")
-    loadedPageIndexes = []
+    resetPanelWarmup()
     currentPluginList = null
     var selectedTitle = currentPageRecord() ? String(currentPageRecord().title) : ""
     sidePanelPages = pagesFromSettings()
@@ -887,7 +977,7 @@ Item {
     // Reload adapted panels after their previous instances have been closed.
     panelEpoch += 1
     if (opened) {
-      markPageLoaded(currentPage)
+      enqueueAllPanelWarmups()
       adaptPreferredPanels()
     }
   }
@@ -948,6 +1038,13 @@ Item {
     }
   }
 
+  Timer {
+    id: warmupTimer
+    interval: 35
+    repeat: true
+    onTriggered: root.advancePanelWarmup()
+  }
+
   Process {
     id: transparentForegroundProc
     stdout: SplitParser {
@@ -973,15 +1070,15 @@ Item {
     if (opened) {
       armFocusDismissal()
       currentPage = 0
-      loadedPageIndexes = []
-      markPageLoaded(currentPage)
+      resetPanelWarmup()
       adaptationErrors = ({})
+      enqueueAllPanelWarmups()
       adaptPreferredPanels()
     } else {
       focusDismissalTimer.stop()
       focusDismissalArmed = false
       openedToplevel = null
-      loadedPageIndexes = []
+      resetPanelWarmup()
       currentPluginList = null
     }
   }
@@ -1403,6 +1500,7 @@ Item {
               height: Math.round(Style.space(28))
               radius: height / 2
               clip: true
+              opacity: root.sidePanelItemLimitReached ? 0.5 : 1
               color: addHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                 : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
@@ -1732,15 +1830,19 @@ Item {
                     id: pageLoader
                     anchors.fill: parent
                     anchors.margins: Style.space(10)
-                    active: root.opened && root.pageIsLoaded(pluginList.pageIndex)
-                      && pluginRow.expanded && root.panelUrl(pluginRow.plugin) !== ""
+                    active: root.opened && root.panelIsWarmed(pluginRow.plugin)
+                      && root.panelUrl(pluginRow.plugin) !== ""
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
                       root.clearPanelError(pluginRow.plugin)
                       root.injectPanel(item, pluginRow.plugin)
+                      root.finishPanelWarmup(pluginRow.plugin)
                     }
                     onStatusChanged: {
-                      if (status === Loader.Error) root.setPanelError(pluginRow.plugin, "The embedded page could not be loaded.")
+                      if (status === Loader.Error) {
+                        root.setPanelError(pluginRow.plugin, "The embedded page could not be loaded.")
+                        root.finishPanelWarmup(pluginRow.plugin)
+                      }
                     }
                   }
 
@@ -2001,7 +2103,9 @@ Item {
               id: catalogTitle
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: "ADD PLUGIN"
+              text: root.sidePanelItemLimitReached
+                ? "PANEL LIMIT REACHED"
+                : "ADD PLUGIN · " + root.sidePanelItemCount + "/" + SidePanelModel.MAX_TOTAL_ITEMS
               color: root.foreground
               font.family: Style.font.family
               font.pixelSize: Style.font.title
@@ -2027,6 +2131,7 @@ Item {
           }
 
           ListView {
+            visible: !root.sidePanelItemLimitReached
             anchors.top: catalogTitleRow.bottom
             anchors.topMargin: Style.space(10)
             anchors.bottom: parent.bottom
@@ -2104,6 +2209,21 @@ Item {
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
             }
+          }
+
+          Text {
+            visible: root.sidePanelItemLimitReached
+            anchors.centerIn: parent
+            width: parent.width - Style.space(24)
+            text: "Remove a plugin before adding another one. The Side Panel can contain up to "
+              + SidePanelModel.MAX_TOTAL_ITEMS + " plugins."
+            textFormat: Text.PlainText
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            color: root.foreground
+            opacity: 0.7
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
           }
         }
       }

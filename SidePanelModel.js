@@ -3,6 +3,7 @@
 var MAX_STATE_BYTES = 64 * 1024
 var MAX_PAGES = 12
 var MAX_ITEMS_PER_PAGE = 24
+var MAX_TOTAL_ITEMS = 48
 var MAX_PAGE_TITLE_LENGTH = 80
 var MAX_ITEM_ID_LENGTH = 160
 var MAX_ITEM_LABEL_LENGTH = 160
@@ -69,14 +70,17 @@ function normalizePages(pages, defaults, resolveId) {
   var source = Array.isArray(pages) && pages.length > 0 ? pages : [{ title: "Plugins", items: defaults }]
   var normalized = []
   var usedPlugins = ({})
+  var itemCount = 0
   for (var i = 0; i < source.length && i < MAX_PAGES; i++) {
     var page = source[i] || ({})
     var items = normalize(page.items, resolveId, MAX_ITEMS_PER_PAGE)
     var uniqueItems = []
     for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      if (itemCount >= MAX_TOTAL_ITEMS) break
       if (usedPlugins[items[itemIndex].id]) continue
       usedPlugins[items[itemIndex].id] = true
       uniqueItems.push(items[itemIndex])
+      itemCount += 1
     }
     normalized.push({
       title: pageTitle(page.title || page.label || page.name, i),

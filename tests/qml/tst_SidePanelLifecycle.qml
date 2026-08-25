@@ -69,6 +69,12 @@ TestCase {
     verify(sidePanel.pageIsLoaded(1))
   }
 
+  function test_background_warmup_loads_all_pages() {
+    tryVerify(function() { return sidePanel.pageIsLoaded(0) }, 1000)
+    tryVerify(function() { return sidePanel.pageIsLoaded(1) }, 1000)
+    tryVerify(function() { return sidePanel.activePanels.length === 2 }, 1000)
+  }
+
   function test_edge_reveal_settings_are_bounded() {
     sidePanel.settings = {
       edge: "left",

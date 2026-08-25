@@ -64,6 +64,10 @@ TestCase {
     var state = SidePanelModel.parseState(JSON.stringify({ version: 1, pages: pages }), [], resolve)
     compare(state.pages.length, SidePanelModel.MAX_PAGES)
     compare(state.pages[0].items.length, SidePanelModel.MAX_ITEMS_PER_PAGE)
+    var totalItems = 0
+    for (var normalizedPageIndex = 0; normalizedPageIndex < state.pages.length; normalizedPageIndex++)
+      totalItems += state.pages[normalizedPageIndex].items.length
+    compare(totalItems, SidePanelModel.MAX_TOTAL_ITEMS)
     compare(state.pages[0].title.length, SidePanelModel.MAX_PAGE_TITLE_LENGTH)
     compare(state.pages[0].items[0].label.length, SidePanelModel.MAX_ITEM_LABEL_LENGTH)
     compare(state.pages[0].items[0].icon.length, SidePanelModel.MAX_ITEM_ICON_LENGTH)
