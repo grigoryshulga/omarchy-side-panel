@@ -325,11 +325,82 @@ Item {
   }
 
   function focusKeyboardPlugin(delta) {
+    if (editing) {
+      focusEditPlugin(delta)
+      return
+    }
     moveKeyboardPlugin(delta)
     Qt.callLater(function() {
       var row = currentPluginList ? currentPluginList.itemAtIndex(keyboardPluginIndex) : null
       if (row && typeof row.focusPanel === "function") row.focusPanel()
     })
+  }
+
+  function ensureKeyboardPluginFocus() {
+    if (pluginItems.length === 0) {
+      keyboardPluginIndex = -1
+      return false
+    }
+    if (keyboardPluginIndex < 0 || keyboardPluginIndex >= pluginItems.length)
+      keyboardPluginIndex = 0
+    return true
+  }
+
+  function focusEditPlugin(delta) {
+    if (!editing || !ensureKeyboardPluginFocus()) return
+    if (delta !== 0)
+      keyboardPluginIndex = (keyboardPluginIndex + delta + pluginItems.length) % pluginItems.length
+    var item = pluginItems[keyboardPluginIndex]
+    if (!item) return
+    setExpanded(resolvedPluginId(item))
+    if (currentPluginList) currentPluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
+  }
+
+  function focusedPlugin() {
+    return ensureKeyboardPluginFocus() ? pluginItems[keyboardPluginIndex] : null
+  }
+
+  function toggleFocusedPlugin() {
+    if (!editing) return
+    var item = focusedPlugin()
+    if (item) setExpanded(resolvedPluginId(item))
+  }
+
+  function removeFocusedPlugin() {
+    if (!editing) return
+    var item = focusedPlugin()
+    if (!item) return
+    var index = keyboardPluginIndex
+    removePlugin(resolvedPluginId(item))
+    if (!ensureKeyboardPluginFocus()) return
+    keyboardPluginIndex = Math.min(index, pluginItems.length - 1)
+    setExpanded(resolvedPluginId(pluginItems[keyboardPluginIndex]))
+  }
+
+  function resizeFocusedPlugin(delta) {
+    if (!editing || delta === 0) return
+    var item = focusedPlugin()
+    if (!item) return
+    var index = itemIndex(resolvedPluginId(item))
+    if (index < 0) return
+    var next = copyItems(pluginItems)
+    var step = Math.round(Style.space(20))
+    if (verticalEdge)
+      next[index].height = SidePanelModel.resizeHeight(panelHeight(item), 0, delta * step, 5, 5)
+    else
+      next[index].width = SidePanelModel.resizeHeight(panelWidth(item), 0, delta * step, 5, 5)
+    persistItems(next)
+  }
+
+  function moveFocusedPlugin(delta) {
+    if (!editing || delta === 0) return
+    var item = focusedPlugin()
+    if (!item) return
+    var sourceIndex = keyboardPluginIndex
+    var targetIndex = sourceIndex + delta
+    if (targetIndex < 0 || targetIndex >= pluginItems.length) return
+    moveItem(resolvedPluginId(item), resolvedPluginId(pluginItems[targetIndex]), delta > 0)
+    keyboardPluginIndex = targetIndex
   }
 
   function scrollPluginList(deltaX, deltaY) {
@@ -473,6 +544,8 @@ Item {
   }
 
   function setExpanded(id) {
+    var index = itemIndex(id)
+    if (index >= 0) keyboardPluginIndex = index
     if (expandedId === id) {
       deactivateActivePanels()
       expandedId = ""
@@ -490,7 +563,8 @@ Item {
     editing = value
     renamingPage = false
     resizingId = ""
-    expandedId = ""
+    keyboardPluginIndex = value && pluginItems.length > 0 ? 0 : -1
+    expandedId = keyboardPluginIndex >= 0 ? resolvedPluginId(pluginItems[keyboardPluginIndex]) : ""
     catalogOpen = false
     settingsOpen = false
     panelEpoch += 1
@@ -1342,10 +1416,37 @@ Item {
     Shortcut { sequence: "Alt+7"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(6) }
     Shortcut { sequence: "Alt+8"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(7) }
     Shortcut { sequence: "Alt+9"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.selectPage(8) }
-    Shortcut { sequence: "Alt+Right"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.movePage(1) }
-    Shortcut { sequence: "Alt+Left"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.movePage(-1) }
+    Shortcut { sequence: "Alt+Right"; enabled: root.opened && !root.editing; context: Qt.WindowShortcut; onActivated: root.movePage(1) }
+    Shortcut { sequence: "Alt+Left"; enabled: root.opened && !root.editing; context: Qt.WindowShortcut; onActivated: root.movePage(-1) }
     Shortcut { sequence: "Ctrl+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.focusKeyboardPlugin(-1) }
+
+    Shortcut { sequence: "Alt+S"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.settingsOpen = !root.settingsOpen }
+    Shortcut { sequence: "Alt+P"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.pinned = !root.pinned }
+    Shortcut { sequence: "Alt+E"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.setEditing(!root.editing) }
+    Shortcut { sequence: "Alt+X"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeCurrentPage() }
+    Shortcut { sequence: "Alt+C"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.addPage() }
+    Shortcut { sequence: "Alt++"; enabled: root.opened && root.editing && !root.sidePanelItemLimitReached; context: Qt.WindowShortcut; onActivated: root.catalogOpen = true }
+    Shortcut { sequence: "Alt+-"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeFocusedPlugin() }
+    Shortcut { sequence: "Alt+Space"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.toggleFocusedPlugin() }
+
+    Shortcut { sequence: "Alt+Up"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+K"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Down"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+J"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+Left"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+H"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Right"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+L"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.moveFocusedPlugin(1) }
+
+    Shortcut { sequence: "Alt+Ctrl+Up"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+Ctrl+K"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+Ctrl+Down"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Ctrl+J"; enabled: root.opened && root.editing && root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Ctrl+Right"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+Ctrl+L"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(1) }
+    Shortcut { sequence: "Alt+Ctrl+Left"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
+    Shortcut { sequence: "Alt+Ctrl+H"; enabled: root.opened && root.editing && !root.verticalEdge; context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1) }
 
     Rectangle {
       id: sidePanelBody
@@ -1780,8 +1881,10 @@ Item {
                   : (headerDrag.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035))
-                border.width: 1
-                border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, pluginRow.expanded ? 0.22 : 0.09)
+                border.width: pluginRow.index === root.keyboardPluginIndex ? 2 : 1
+                border.color: pluginRow.index === root.keyboardPluginIndex
+                  ? Color.accent
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, pluginRow.expanded ? 0.22 : 0.09)
 
                 MouseArea {
                   id: headerDrag

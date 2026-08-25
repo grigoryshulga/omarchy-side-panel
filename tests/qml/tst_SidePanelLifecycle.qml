@@ -119,6 +119,39 @@ TestCase {
     compare(sidePanel.currentPage, 0)
   }
 
+  function test_edit_keyboard_commands_focus_resize_and_reorder_a_plugin() {
+    sidePanel.sidePanelPages = [{
+      title: "Plugins",
+      items: [fixturePage.items[0], secondFixturePage.items[0]]
+    }]
+    sidePanel.currentPage = 0
+    sidePanel.setEditing(true)
+    compare(sidePanel.keyboardPluginIndex, 0)
+    compare(sidePanel.expandedId, "fixture")
+
+    sidePanel.focusEditPlugin(1)
+    compare(sidePanel.keyboardPluginIndex, 1)
+    compare(sidePanel.expandedId, "fixture-two")
+
+    sidePanel.toggleFocusedPlugin()
+    compare(sidePanel.expandedId, "")
+    sidePanel.toggleFocusedPlugin()
+    compare(sidePanel.expandedId, "fixture-two")
+
+    var initialHeight = sidePanel.panelHeight(sidePanel.focusedPlugin())
+    sidePanel.resizeFocusedPlugin(1)
+    verify(sidePanel.panelHeight(sidePanel.focusedPlugin()) > initialHeight)
+
+    sidePanel.moveFocusedPlugin(-1)
+    compare(sidePanel.keyboardPluginIndex, 0)
+    compare(sidePanel.pluginItems[0].id, "fixture-two")
+
+    sidePanel.removeFocusedPlugin()
+    compare(sidePanel.pluginItems.length, 1)
+    compare(sidePanel.keyboardPluginIndex, 0)
+    compare(sidePanel.pluginItems[0].id, "fixture")
+  }
+
   function test_escape_keeps_a_pinned_side_panel_open() {
     sidePanel.pinned = true
     sidePanel.opened = true
