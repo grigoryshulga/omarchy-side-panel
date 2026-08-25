@@ -52,6 +52,7 @@ Item {
   property int keyboardPluginIndex: -1
   property string hoveredPanelId: ""
   property var sidePanelState: ({})
+  property bool panelFocusObserved: false
 
   readonly property int sidePanelWidth: Math.round(Style.space(480))
   readonly property int sidePanelHeight: Math.round(Style.space(420))
@@ -790,6 +791,16 @@ Item {
     close()
   }
 
+  function handlePanelFocusChange(active) {
+    // PanelWindow starts inactive while its layer surface maps. Only treat a
+    // later transition away from an observed active state as focus loss.
+    if (active) {
+      panelFocusObserved = true
+      return
+    }
+    if (opened && panelFocusObserved && !pinned) close()
+  }
+
   function open() { opened = true }
   function close() {
     if (closing || !opened) return
@@ -811,7 +822,7 @@ Item {
   function handleEscape() {
     if (catalogOpen) catalogOpen = false
     else if (settingsOpen) settingsOpen = false
-    else close()
+    else if (!pinned) close()
   }
 
   function launchFallback(item) {
@@ -914,6 +925,7 @@ Item {
   }
 
   onOpenedChanged: {
+    if (!opened) panelFocusObserved = false
     if (bar && popoutOwner) {
       if (opened) bar.requestPopout(popoutOwner)
       else bar.releasePopout(popoutOwner)
@@ -1003,6 +1015,8 @@ Item {
       : WlrKeyboardFocus.None
 
     property bool focusPrimed: false
+
+    onActiveChanged: root.handlePanelFocusChange(active)
 
     function primeFocus() {
       if (root.opened && backingWindowVisible) focusPrimeTimer.restart()
