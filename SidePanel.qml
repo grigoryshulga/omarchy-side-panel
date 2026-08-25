@@ -30,7 +30,6 @@ Item {
   property string draggedId: ""
   property real dragWidth: 0
   property string resizingId: ""
-  property string resizingAxis: ""
   property real resizeStartExtent: 0
   property real resizeStartPosition: 0
   property real resizePreviewExtent: 0
@@ -57,6 +56,7 @@ Item {
   property var panelErrors: ({})
   property int panelEpoch: 0
   property bool resizingSidePanel: false
+  property string sidePanelResizeAxis: "edge"
   property real sidePanelResizeStart: 0
   property real sidePanelResizeStartExtent: 0
   property real sidePanelResizePreview: 0
@@ -82,6 +82,9 @@ Item {
     verticalEdge ? sidePanelWidth : sidePanelHeight
   )
   readonly property real sidePanelExtent: resizingSidePanel ? sidePanelResizePreview : configuredExtent
+  readonly property real configuredOverlayCrossExtent: SidePanelModel.boundedEdgeSize(setting("overlayCrossSize", 0), 0)
+  readonly property real overlayCrossExtent: !reservesSpace && configuredOverlayCrossExtent > 0
+    ? configuredOverlayCrossExtent : 0
   // The layer surface itself maps on open. Animate its content from the chosen
   // Edge so opening reads as a quick slide rather than a fade-in.
   property real panelRevealProgress: 0
@@ -388,7 +391,7 @@ Item {
     setExpanded(resolvedPluginId(pluginItems[keyboardPluginIndex]))
   }
 
-  function resizeFocusedPlugin(delta, axis) {
+  function resizeFocusedPlugin(delta) {
     if (!editing || delta === 0) return
     var item = focusedPlugin()
     if (!item) return
@@ -396,8 +399,7 @@ Item {
     if (index < 0) return
     var next = copyItems(pluginItems)
     var step = Math.round(Style.space(20))
-    var resizeAxis = axis || (verticalEdge ? "height" : "width")
-    if (resizeAxis === "height")
+    if (verticalEdge)
       next[index].height = SidePanelModel.resizeHeight(panelHeight(item), 0, delta * step, 5, 5)
     else
       next[index].width = SidePanelModel.resizeHeight(panelWidth(item), 0, delta * step, 5, 5)
@@ -442,7 +444,7 @@ Item {
   }
 
   function persistSidePanelSetting(name, value) {
-    if (name === "edgeSize")
+    if (name === "edgeSize" || name === "overlayCrossSize")
       value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
     var entry = SidePanelModel.persistedEntry(settings, sidePanelPages)
     entry[name] = value
@@ -460,11 +462,11 @@ Item {
       pages: copyPages(sidePanelPages),
       currentPage: currentPage
     }
-    var settingNames = ["edge", "edgeSize", "layoutMode"]
+    var settingNames = ["edge", "edgeSize", "overlayCrossSize", "layoutMode"]
     for (var index = 0; index < settingNames.length; index++) {
       var name = settingNames[index]
       var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
-      if (name === "edgeSize")
+      if (name === "edgeSize" || name === "overlayCrossSize")
         value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
       if (value !== undefined && value !== null) state[name] = value
     }
@@ -511,23 +513,24 @@ Item {
     return verticalEdge ? point.x : point.y
   }
 
-  function beginSidePanelResize(position) {
+  function beginSidePanelResize(axis, position) {
     resizingSidePanel = true
+    sidePanelResizeAxis = axis
     sidePanelResizeStart = position
-    sidePanelResizeStartExtent = sidePanelExtent
-    sidePanelResizePreview = sidePanelExtent
+    sidePanelResizeStartExtent = axis === "edge" ? sidePanelExtent : (verticalEdge ? surface.height : surface.width)
+    sidePanelResizePreview = sidePanelResizeStartExtent
   }
 
   function updateSidePanelResize(position) {
     if (!resizingSidePanel) return
     var delta = position - sidePanelResizeStart
-    if (edge === "right" || edge === "bottom") delta = -delta
+    if (sidePanelResizeAxis === "edge" && (edge === "right" || edge === "bottom")) delta = -delta
     sidePanelResizePreview = Math.round(Math.max(Style.space(260), Math.min(Style.space(900), sidePanelResizeStartExtent + delta)) / 5) * 5
   }
 
   function finishSidePanelResize() {
     if (!resizingSidePanel) return
-    persistSidePanelSetting("edgeSize", sidePanelResizePreview)
+    persistSidePanelSetting(sidePanelResizeAxis === "edge" ? "edgeSize" : "overlayCrossSize", sidePanelResizePreview)
     resizingSidePanel = false
   }
 
@@ -551,6 +554,7 @@ Item {
       for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
         if (resolvedPluginId(items[itemIndex]) === wanted) return true
       }
+
     }
     return false
   }
@@ -584,50 +588,44 @@ Item {
   }
 
   function panelHeight(item) {
-    if (item && resizingId === item.id && resizingAxis === "height") return resizePreviewExtent
+    if (item && resizingId === item.id) return resizePreviewExtent
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
     return Math.max(5, Math.round(height))
   }
 
   function panelWidth(item) {
-    if (item && resizingId === item.id && resizingAxis === "width") return resizePreviewExtent
+    if (item && resizingId === item.id) return resizePreviewExtent
     var width = Number(item ? item.width : 0)
     if (!width) width = Style.space(360)
     return Math.max(5, Math.round(width))
   }
 
-  function beginResize(item, axis, position) {
-    resizeStartExtent = axis === "height" ? panelHeight(item) : panelWidth(item)
+  function beginResize(item, position) {
+    resizeStartExtent = verticalEdge ? panelHeight(item) : panelWidth(item)
     resizingId = item.id
-    resizingAxis = axis
     resizeStartPosition = position
     resizePreviewExtent = resizeStartExtent
   }
 
   function updateResize(position) {
     if (resizingId === "") return
-    var adjustedPosition = position
-    if ((resizingAxis === "width" && verticalEdge && edge === "right")
-        || (resizingAxis === "height" && !verticalEdge && edge === "bottom"))
-      adjustedPosition = resizeStartPosition - (position - resizeStartPosition)
-    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, adjustedPosition, 5, 5)
+    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, position, 5, 5)
   }
 
   function finishResize() {
     var index = itemIndex(resizingId)
     if (index >= 0) {
       var next = copyItems(pluginItems)
-      next[index][resizingAxis] = resizePreviewExtent
+      if (verticalEdge) next[index].height = resizePreviewExtent
+      else next[index].width = resizePreviewExtent
       persistItems(next)
     }
     resizingId = ""
-    resizingAxis = ""
   }
 
   function cancelResize() {
     resizingId = ""
-    resizingAxis = ""
     resizePreviewExtent = 0
   }
 
@@ -1518,12 +1516,16 @@ Item {
         y: root.panelRevealOffsetY
       }
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
+        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.height - root.overlayCrossExtent) / 2) : 0)
         + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
+        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.width - root.overlayCrossExtent) / 2) : 0)
         + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
+        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.height - root.overlayCrossExtent) / 2) : 0)
         + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
+        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.width - root.overlayCrossExtent) / 2) : 0)
         + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
@@ -1988,13 +1990,8 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
-              width: root.verticalEdge
-                ? (!root.reservesSpace && Number(pluginRow.plugin.width) > 0 ? root.panelWidth(pluginRow.plugin) : pluginList.width)
-                : root.panelWidth(pluginRow.plugin)
-              height: root.verticalEdge
-                ? (root.editing ? header.height : 0) + content.height
-                : (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0
-                  ? (root.editing ? header.height : 0) + content.height : pluginList.height)
+              width: root.verticalEdge ? pluginList.width : root.panelWidth(pluginRow.plugin)
+              height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
               z: root.draggedId === pluginId ? 3 : 1
 
               function focusPanel() {
@@ -2140,8 +2137,7 @@ Item {
                 anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
-                  ? (root.verticalEdge || (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0)
-                    ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
+                  ? (root.verticalEdge ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
                   : 0
                 clip: true
 
@@ -2221,11 +2217,11 @@ Item {
 
                 Rectangle {
                   id: resizeHandle
-                  visible: root.editing && pluginRow.expanded && (root.verticalEdge || !root.reservesSpace)
-                  width: parent.width
-                  height: Math.round(Style.space(8))
-                  x: 0
-                  y: parent.height - height
+                  visible: root.editing && pluginRow.expanded
+                  width: root.verticalEdge ? parent.width : Math.round(Style.space(8))
+                  height: root.verticalEdge ? Math.round(Style.space(8)) : parent.height
+                  x: root.verticalEdge ? 0 : parent.width - width
+                  y: root.verticalEdge ? parent.height - height : 0
                   color: resizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
@@ -2235,47 +2231,20 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     preventStealing: true
-                    cursorShape: Qt.SizeVerCursor
+                    cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
                     onPressed: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.beginResize(pluginRow.plugin, "height", point.y)
+                      root.beginResize(pluginRow.plugin, root.verticalEdge ? point.y : point.x)
                     }
                     onPositionChanged: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.updateResize(point.y)
+                      root.updateResize(root.verticalEdge ? point.y : point.x)
                     }
                     onReleased: root.finishResize()
                     onCanceled: root.cancelResize()
                   }
                 }
 
-                Rectangle {
-                  visible: root.editing && pluginRow.expanded && (!root.verticalEdge || !root.reservesSpace)
-                  width: Math.round(Style.space(8))
-                  height: parent.height
-                  x: parent.width - width
-                  y: 0
-                  color: widthResizeMouse.containsMouse
-                    ? Style.hoverFillFor(root.foreground, Color.accent)
-                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
-                  MouseArea {
-                    id: widthResizeMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    preventStealing: true
-                    cursorShape: Qt.SizeHorCursor
-                    onPressed: function(mouse) {
-                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.beginResize(pluginRow.plugin, "width", point.x)
-                    }
-                    onPositionChanged: function(mouse) {
-                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.updateResize(point.x)
-                    }
-                    onReleased: root.finishResize()
-                    onCanceled: root.cancelResize()
-                  }
-                }
               }
             }
 
@@ -2481,7 +2450,7 @@ Item {
           preventStealing: true
           cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
           onPressed: function(mouse) {
-            root.beginSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
+            root.beginSidePanelResize("edge", root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
           }
           onPositionChanged: function(mouse) {
             root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
@@ -2489,6 +2458,27 @@ Item {
           onReleased: root.finishSidePanelResize()
           onCanceled: function() { root.resizingSidePanel = false }
         }
+      }
+    }
+
+    Rectangle {
+      id: sidePanelCrossResizeHandle
+      visible: root.editing && !root.reservesSpace
+      width: root.verticalEdge ? Style.space(48) : Style.space(12)
+      height: root.verticalEdge ? Style.space(12) : Style.space(48)
+      x: root.verticalEdge ? (surface.width - width) / 2 : surface.width - width
+      y: root.verticalEdge ? surface.height - height : (surface.height - height) / 2
+      radius: Math.min(width, height) / 2
+      color: crossHandle.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
+      z: 9
+      MouseArea {
+        id: crossHandle
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
+        onPressed: function(mouse) { root.beginSidePanelResize("cross", root.verticalEdge ? mouse.y : mouse.x) }
+        onPositionChanged: function(mouse) { root.updateSidePanelResize(root.verticalEdge ? mouse.y : mouse.x) }
+        onReleased: root.finishSidePanelResize()
       }
     }
 
