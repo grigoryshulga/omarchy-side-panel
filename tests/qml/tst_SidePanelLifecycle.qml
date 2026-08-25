@@ -107,6 +107,9 @@ TestCase {
     compare(sidePanel.currentPage, 0)
 
     sidePanel.handlePanelWheel(Qt.AltModifier, 0, 120)
+    compare(sidePanel.currentPage, 1)
+
+    sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
     compare(sidePanel.currentPage, 0)
   }
 

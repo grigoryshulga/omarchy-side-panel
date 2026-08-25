@@ -263,13 +263,12 @@ Item {
   }
 
   function handlePanelWheel(modifiers, deltaX, deltaY) {
-    // PanelWindow reports the primary wheel on the axis perpendicular to its
-    // edge: X for left/right panels and Y for top/bottom panels. This keeps the
-    // MX Master thumb wheel from being mistaken for the primary wheel.
-    var primaryWheelDelta = verticalEdge ? deltaX : deltaY
     if (modifiers & Qt.AltModifier) {
-      if (primaryWheelDelta > 0) movePage(1)
-      else if (primaryWheelDelta < 0) movePage(-1)
+      // Treat either wheel axis as page navigation. Prefer the dominant axis
+      // for diagonal input so one gesture produces only one page change.
+      var pageDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY
+      if (pageDelta > 0) movePage(1)
+      else if (pageDelta < 0) movePage(-1)
       return
     }
     scrollPluginList(deltaX, deltaY)
