@@ -85,6 +85,15 @@ Item {
   readonly property real configuredOverlayCrossExtent: SidePanelModel.boundedEdgeSize(setting("overlayCrossSize", 0), 0)
   readonly property real overlayCrossExtent: !reservesSpace && configuredOverlayCrossExtent > 0
     ? configuredOverlayCrossExtent : 0
+  readonly property string overlayAlignment: String(setting("overlayAlignment", "center"))
+
+  function overlayCrossOffset(available) {
+    if (overlayCrossExtent <= 0) return 0
+    var remaining = Math.max(0, available - overlayCrossExtent)
+    if (overlayAlignment === "left" || overlayAlignment === "top") return 0
+    if (overlayAlignment === "right" || overlayAlignment === "bottom") return remaining
+    return remaining / 2
+  }
   // The layer surface itself maps on open. Animate its content from the chosen
   // Edge so opening reads as a quick slide rather than a fade-in.
   property real panelRevealProgress: 0
@@ -462,7 +471,7 @@ Item {
       pages: copyPages(sidePanelPages),
       currentPage: currentPage
     }
-    var settingNames = ["edge", "edgeSize", "overlayCrossSize", "layoutMode"]
+    var settingNames = ["edge", "edgeSize", "overlayCrossSize", "overlayAlignment", "layoutMode"]
     for (var index = 0; index < settingNames.length; index++) {
       var name = settingNames[index]
       var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
@@ -1516,16 +1525,16 @@ Item {
         y: root.panelRevealOffsetY
       }
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
-        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.height - root.overlayCrossExtent) / 2) : 0)
+        + (root.verticalEdge && root.overlayCrossExtent > 0 ? root.overlayCrossOffset(parent.height) : 0)
         + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
-        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.width - root.overlayCrossExtent) / 2) : 0)
+        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, parent.width - root.overlayCrossExtent - root.overlayCrossOffset(parent.width)) : 0)
         + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
-        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.height - root.overlayCrossExtent) / 2) : 0)
+        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, parent.height - root.overlayCrossExtent - root.overlayCrossOffset(parent.height)) : 0)
         + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
-        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, (parent.width - root.overlayCrossExtent) / 2) : 0)
+        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? root.overlayCrossOffset(parent.width) : 0)
         + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
@@ -2466,8 +2475,8 @@ Item {
       visible: root.editing && !root.reservesSpace
       width: root.verticalEdge ? Style.space(48) : Style.space(12)
       height: root.verticalEdge ? Style.space(12) : Style.space(48)
-      x: root.verticalEdge ? (surface.width - width) / 2 : surface.width - width
-      y: root.verticalEdge ? surface.height - height : (surface.height - height) / 2
+      x: root.verticalEdge ? sidePanelBody.x + (sidePanelBody.width - width) / 2 : sidePanelBody.x + sidePanelBody.width - width
+      y: root.verticalEdge ? sidePanelBody.y + sidePanelBody.height - height : sidePanelBody.y + (sidePanelBody.height - height) / 2
       radius: Math.min(width, height) / 2
       color: crossHandle.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
       z: 9
@@ -2476,8 +2485,8 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
-        onPressed: function(mouse) { root.beginSidePanelResize("cross", root.verticalEdge ? mouse.y : mouse.x) }
-        onPositionChanged: function(mouse) { root.updateSidePanelResize(root.verticalEdge ? mouse.y : mouse.x) }
+        onPressed: function(mouse) { var p = sidePanelCrossResizeHandle.mapToItem(surface.contentItem, mouse.x, mouse.y); root.beginSidePanelResize("cross", root.verticalEdge ? p.y : p.x) }
+        onPositionChanged: function(mouse) { var p = sidePanelCrossResizeHandle.mapToItem(surface.contentItem, mouse.x, mouse.y); root.updateSidePanelResize(root.verticalEdge ? p.y : p.x) }
         onReleased: root.finishSidePanelResize()
       }
     }

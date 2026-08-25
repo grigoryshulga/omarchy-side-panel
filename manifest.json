@@ -20,6 +20,7 @@
     "defaults": {
       "edge": "left",
       "layoutMode": "overlay",
+      "overlayAlignment": "center",
       "edgeRevealEnabled": true,
       "edgeRevealDelayMs": 250,
       "transparentBackground": false
@@ -40,6 +41,14 @@
         "description": "Overlay windows or reserve screen space while the side panel is open.",
         "options": ["overlay", "reserve"],
         "defaultValue": "overlay"
+      },
+      {
+        "key": "overlayAlignment",
+        "type": "enum",
+        "label": "Overlay alignment",
+        "description": "Align a horizontal panel left, center, or right; align a vertical panel top, center, or bottom.",
+        "options": ["left", "center", "right", "top", "bottom"],
+        "defaultValue": "center"
       },
       {
         "key": "edgeRevealEnabled",
