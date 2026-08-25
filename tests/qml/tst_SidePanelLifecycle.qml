@@ -115,4 +115,29 @@ TestCase {
 
     verify(sidePanel.opened)
   }
+
+  function test_focus_change_closes_an_unpinned_side_panel() {
+    var openedWindow = ({ name: "opened-window" })
+    var nextWindow = ({ name: "next-window" })
+    sidePanel.opened = true
+    sidePanel.pinned = false
+    sidePanel.openedToplevel = openedWindow
+    sidePanel.focusDismissalArmed = true
+
+    verify(sidePanel.shouldDismissForToplevelChange(nextWindow))
+    sidePanel.handleActiveToplevelChange(nextWindow)
+
+    verify(!sidePanel.opened)
+  }
+
+  function test_focus_change_keeps_a_pinned_side_panel_open() {
+    sidePanel.opened = true
+    sidePanel.pinned = true
+    sidePanel.openedToplevel = ({ name: "opened-window" })
+    sidePanel.focusDismissalArmed = true
+
+    sidePanel.handleActiveToplevelChange({ name: "next-window" })
+
+    verify(sidePanel.opened)
+  }
 }

@@ -36,6 +36,10 @@ Item {
   property bool dropAfter: false
   property real dropLineY: 0
   property var activePanels: []
+  // Layer-shell surfaces do not report whether they own focus. Keep the
+  // ordinary window that was focused when SidePanel opened instead.
+  property var openedToplevel: null
+  property bool focusDismissalArmed: false
   property var sidePanelPages: []
   property int currentPage: 0
   readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
@@ -790,6 +794,20 @@ Item {
     close()
   }
 
+  function armFocusDismissal() {
+    focusDismissalArmed = false
+    openedToplevel = ToplevelManager.activeToplevel
+    focusDismissalTimer.restart()
+  }
+
+  function shouldDismissForToplevelChange(nextToplevel) {
+    return opened && focusDismissalArmed && !pinned && nextToplevel !== openedToplevel
+  }
+
+  function handleActiveToplevelChange(nextToplevel) {
+    if (shouldDismissForToplevelChange(nextToplevel)) close()
+  }
+
   function open() { opened = true }
   function close() {
     if (closing || !opened) return
@@ -919,9 +937,39 @@ Item {
       else bar.releasePopout(popoutOwner)
     }
     if (opened) {
+      armFocusDismissal()
       currentPage = 0
       adaptationErrors = ({})
       adaptPreferredPanels()
+    } else {
+      focusDismissalTimer.stop()
+      focusDismissalArmed = false
+      openedToplevel = null
+    }
+  }
+  onPinnedChanged: {
+    // A pinned panel deliberately ignores focus changes. Once it is unpinned,
+    // use the then-current application as a fresh baseline.
+    if (opened && !pinned) armFocusDismissal()
+  }
+
+  Connections {
+    target: ToplevelManager
+    function onActiveToplevelChanged() {
+      root.handleActiveToplevelChange(ToplevelManager.activeToplevel)
+    }
+  }
+
+  Timer {
+    id: focusDismissalTimer
+    interval: 100
+    repeat: false
+    onTriggered: {
+      if (!root.opened) return
+      // During startup the compositor can publish the active toplevel a moment
+      // after the panel opens. Capture it only after that initial settle.
+      root.openedToplevel = ToplevelManager.activeToplevel
+      root.focusDismissalArmed = true
     }
   }
 
