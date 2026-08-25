@@ -808,6 +808,16 @@ Item {
     if (shouldDismissForToplevelChange(nextToplevel)) close()
   }
 
+  function handleOutsideClick() {
+    if (opened && !pinned) close()
+  }
+
+  function outsideClickCaptureEnabled() {
+    // Overlay mode already has a fullscreen Side Panel surface. Reserve mode
+    // only maps the edge itself, so it needs a second input-only surface.
+    return opened && !pinned && reservesSpace
+  }
+
   function open() { opened = true }
   function close() {
     if (closing || !opened) return
@@ -1036,6 +1046,41 @@ Item {
     }
   }
 
+  // In reserve mode `surface` only covers the Side Panel edge. A separate
+  // fullscreen surface receives clicks everywhere else, with a hole for the
+  // Side Panel itself so embedded pages keep receiving their own input.
+  PanelWindow {
+    id: outsideClickSurface
+    objectName: "outsideClickCapture"
+    screen: root.anchorWindow ? root.anchorWindow.screen : null
+    visible: root.outsideClickCaptureEnabled()
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "gshulga-side-panel-outside-click"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    anchors { top: true; bottom: true; left: true; right: true }
+    mask: Region {
+      width: outsideClickSurface.width
+      height: outsideClickSurface.height
+      Region {
+        intersection: Intersection.Subtract
+        x: root.verticalEdge && root.edge === "right"
+          ? outsideClickSurface.width - Math.min(root.sidePanelExtent, outsideClickSurface.width) : 0
+        y: !root.verticalEdge && root.edge === "bottom"
+          ? outsideClickSurface.height - Math.min(root.sidePanelExtent, outsideClickSurface.height) : 0
+        width: root.verticalEdge ? Math.min(root.sidePanelExtent, outsideClickSurface.width) : outsideClickSurface.width
+        height: root.verticalEdge ? outsideClickSurface.height : Math.min(root.sidePanelExtent, outsideClickSurface.height)
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+      onClicked: root.handleOutsideClick()
+    }
+  }
+
   PanelWindow {
     id: surface
     screen: root.anchorWindow ? root.anchorWindow.screen : null
@@ -1158,7 +1203,7 @@ Item {
 
       onClicked: function(mouse) {
         if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
-        if (!root.pinned) root.close()
+        root.handleOutsideClick()
       }
     }
 

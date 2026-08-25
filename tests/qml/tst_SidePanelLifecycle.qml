@@ -140,4 +140,25 @@ TestCase {
 
     verify(sidePanel.opened)
   }
+
+  function test_outside_click_capture_is_only_needed_for_unpinned_reserve_mode() {
+    sidePanel.settings = { edge: "left", layoutMode: "reserve", pages: [fixturePage] }
+    sidePanel.opened = true
+    sidePanel.pinned = false
+
+    verify(sidePanel.outsideClickCaptureEnabled())
+    verify(findChild(sidePanel, "outsideClickCapture") !== null)
+
+    sidePanel.pinned = true
+    verify(!sidePanel.outsideClickCaptureEnabled())
+  }
+
+  function test_outside_click_keeps_a_pinned_side_panel_open() {
+    sidePanel.opened = true
+    sidePanel.pinned = true
+
+    sidePanel.handleOutsideClick()
+
+    verify(sidePanel.opened)
+  }
 }
