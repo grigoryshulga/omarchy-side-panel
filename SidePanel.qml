@@ -30,6 +30,7 @@ Item {
   property string draggedId: ""
   property real dragWidth: 0
   property string resizingId: ""
+  property string resizingAxis: ""
   property real resizeStartExtent: 0
   property real resizeStartPosition: 0
   property real resizePreviewExtent: 0
@@ -56,6 +57,7 @@ Item {
   property var panelErrors: ({})
   property int panelEpoch: 0
   property bool resizingSidePanel: false
+  property bool panelResizeMode: false
   property string sidePanelResizeAxis: "edge"
   property real sidePanelResizeStart: 0
   property real sidePanelResizeStartExtent: 0
@@ -81,15 +83,31 @@ Item {
     setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight),
     verticalEdge ? sidePanelWidth : sidePanelHeight
   )
-  readonly property real sidePanelExtent: resizingSidePanel ? sidePanelResizePreview : configuredExtent
+  readonly property real sidePanelExtent: resizingSidePanel && sidePanelResizeAxis === "edge"
+    ? sidePanelResizePreview : configuredExtent
   readonly property real configuredOverlayCrossExtent: SidePanelModel.boundedEdgeSize(setting("overlayCrossSize", 0), 0)
-  readonly property real overlayCrossExtent: !reservesSpace && configuredOverlayCrossExtent > 0
-    ? configuredOverlayCrossExtent : 0
-  readonly property string overlayAlignment: String(setting("overlayAlignment", "center"))
+  readonly property real overlayCrossExtent: !reservesSpace
+    ? (resizingSidePanel && sidePanelResizeAxis === "cross"
+      ? sidePanelResizePreview : configuredOverlayCrossExtent) : 0
+  readonly property string overlayAlignment: {
+    var value = String(setting("overlayAlignment", "center")).toLowerCase()
+    var options = verticalEdge ? ["top", "center", "bottom"] : ["left", "center", "right"]
+    return options.indexOf(value) >= 0 ? value : "center"
+  }
+  readonly property real sidePanelInsetTop: reservesSpace ? 0
+    : overlayGap + (barPosition === "top" ? barInset : 0)
+  readonly property real sidePanelInsetRight: reservesSpace ? 0
+    : overlayGap + (barPosition === "right" ? barInset : 0)
+  readonly property real sidePanelInsetBottom: reservesSpace ? 0
+    : overlayGap + (barPosition === "bottom" ? barInset : 0)
+  readonly property real sidePanelInsetLeft: reservesSpace ? 0
+    : overlayGap + (barPosition === "left" ? barInset : 0)
+  readonly property real sidePanelAvailableWidth: Math.max(0, surface.width - sidePanelInsetLeft - sidePanelInsetRight)
+  readonly property real sidePanelAvailableHeight: Math.max(0, surface.height - sidePanelInsetTop - sidePanelInsetBottom)
 
   function overlayCrossOffset(available) {
     if (overlayCrossExtent <= 0) return 0
-    var remaining = Math.max(0, available - overlayCrossExtent)
+    var remaining = Math.max(0, available - Math.min(overlayCrossExtent, available))
     if (overlayAlignment === "left" || overlayAlignment === "top") return 0
     if (overlayAlignment === "right" || overlayAlignment === "bottom") return remaining
     return remaining / 2
@@ -400,7 +418,7 @@ Item {
     setExpanded(resolvedPluginId(pluginItems[keyboardPluginIndex]))
   }
 
-  function resizeFocusedPlugin(delta) {
+  function resizeFocusedPlugin(delta, axis) {
     if (!editing || delta === 0) return
     var item = focusedPlugin()
     if (!item) return
@@ -408,7 +426,8 @@ Item {
     if (index < 0) return
     var next = copyItems(pluginItems)
     var step = Math.round(Style.space(20))
-    if (verticalEdge)
+    var resizeAxis = axis || (verticalEdge ? "height" : "width")
+    if (resizeAxis === "height")
       next[index].height = SidePanelModel.resizeHeight(panelHeight(item), 0, delta * step, 5, 5)
     else
       next[index].width = SidePanelModel.resizeHeight(panelWidth(item), 0, delta * step, 5, 5)
@@ -517,8 +536,7 @@ Item {
   }
 
   function resizePosition(handle, x, y) {
-    var target = anchorWindow ? anchorWindow.contentItem : surface.contentItem
-    var point = handle.mapToItem(target, x, y)
+    var point = handle.mapToItem(surface.contentItem, x, y)
     return verticalEdge ? point.x : point.y
   }
 
@@ -526,7 +544,8 @@ Item {
     resizingSidePanel = true
     sidePanelResizeAxis = axis
     sidePanelResizeStart = position
-    sidePanelResizeStartExtent = axis === "edge" ? sidePanelExtent : (verticalEdge ? surface.height : surface.width)
+    sidePanelResizeStartExtent = axis === "edge" ? sidePanelExtent
+      : (verticalEdge ? sidePanelBody.height : sidePanelBody.width)
     sidePanelResizePreview = sidePanelResizeStartExtent
   }
 
@@ -534,13 +553,27 @@ Item {
     if (!resizingSidePanel) return
     var delta = position - sidePanelResizeStart
     if (sidePanelResizeAxis === "edge" && (edge === "right" || edge === "bottom")) delta = -delta
-    sidePanelResizePreview = Math.round(Math.max(Style.space(260), Math.min(Style.space(900), sidePanelResizeStartExtent + delta)) / 5) * 5
+    if (sidePanelResizeAxis === "cross"
+        && ((verticalEdge && overlayAlignment === "bottom")
+          || (!verticalEdge && overlayAlignment === "right"))) delta = -delta
+    var available = sidePanelResizeAxis === "edge"
+      ? (verticalEdge ? sidePanelAvailableWidth : sidePanelAvailableHeight)
+      : (verticalEdge ? sidePanelAvailableHeight : sidePanelAvailableWidth)
+    var maximum = available > 0 ? Math.min(SidePanelModel.MAX_EDGE_SIZE, available) : SidePanelModel.MAX_EDGE_SIZE
+    var minimum = Math.min(Style.space(260), maximum)
+    sidePanelResizePreview = Math.round(Math.max(minimum, Math.min(maximum, sidePanelResizeStartExtent + delta)) / 5) * 5
   }
 
   function finishSidePanelResize() {
     if (!resizingSidePanel) return
     persistSidePanelSetting(sidePanelResizeAxis === "edge" ? "edgeSize" : "overlayCrossSize", sidePanelResizePreview)
     resizingSidePanel = false
+    sidePanelResizePreview = 0
+  }
+
+  function cancelSidePanelResize() {
+    resizingSidePanel = false
+    sidePanelResizePreview = 0
   }
 
   function itemFor(id) {
@@ -597,44 +630,50 @@ Item {
   }
 
   function panelHeight(item) {
-    if (item && resizingId === item.id) return resizePreviewExtent
+    if (item && resizingId === item.id && resizingAxis === "height") return resizePreviewExtent
     var height = Number(item ? item.height : 0)
     if (!height) height = Style.space(280)
     return Math.max(5, Math.round(height))
   }
 
   function panelWidth(item) {
-    if (item && resizingId === item.id) return resizePreviewExtent
+    if (item && resizingId === item.id && resizingAxis === "width") return resizePreviewExtent
     var width = Number(item ? item.width : 0)
     if (!width) width = Style.space(360)
     return Math.max(5, Math.round(width))
   }
 
-  function beginResize(item, position) {
-    resizeStartExtent = verticalEdge ? panelHeight(item) : panelWidth(item)
+  function beginResize(item, axis, position) {
+    resizeStartExtent = axis === "height" ? panelHeight(item) : panelWidth(item)
     resizingId = item.id
+    resizingAxis = axis
     resizeStartPosition = position
     resizePreviewExtent = resizeStartExtent
   }
 
   function updateResize(position) {
     if (resizingId === "") return
-    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, position, 5, 5)
+    var adjustedPosition = position
+    if ((resizingAxis === "width" && verticalEdge && edge === "right")
+        || (resizingAxis === "height" && !verticalEdge && edge === "bottom"))
+      adjustedPosition = resizeStartPosition - (position - resizeStartPosition)
+    resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, adjustedPosition, 5, 5)
   }
 
   function finishResize() {
     var index = itemIndex(resizingId)
     if (index >= 0) {
       var next = copyItems(pluginItems)
-      if (verticalEdge) next[index].height = resizePreviewExtent
-      else next[index].width = resizePreviewExtent
+      next[index][resizingAxis] = resizePreviewExtent
       persistItems(next)
     }
     resizingId = ""
+    resizingAxis = ""
   }
 
   function cancelResize() {
     resizingId = ""
+    resizingAxis = ""
     resizePreviewExtent = 0
   }
 
@@ -1104,6 +1143,12 @@ Item {
     cancelEdgeReveal()
     scheduleTransparentForegroundRefresh()
   }
+  onSettingsOpenChanged: {
+    if (!settingsOpen) {
+      panelResizeMode = false
+      cancelSidePanelResize()
+    }
+  }
   onSidePanelExtentChanged: scheduleTransparentForegroundRefresh()
 
   FileView {
@@ -1518,24 +1563,29 @@ Item {
 
     Rectangle {
       id: sidePanelBody
-      anchors.fill: parent
       z: 1
+      x: root.verticalEdge
+        ? (root.edge === "left" ? root.sidePanelInsetLeft
+          : surface.width - root.sidePanelInsetRight - width)
+        : root.sidePanelInsetLeft + root.overlayCrossOffset(root.sidePanelAvailableWidth)
+      y: root.verticalEdge
+        ? root.sidePanelInsetTop + root.overlayCrossOffset(root.sidePanelAvailableHeight)
+        : (root.edge === "top" ? root.sidePanelInsetTop
+          : surface.height - root.sidePanelInsetBottom - height)
+      width: root.verticalEdge
+        ? Math.min(root.sidePanelExtent, root.sidePanelAvailableWidth)
+        : (root.overlayCrossExtent > 0
+          ? Math.min(root.overlayCrossExtent, root.sidePanelAvailableWidth)
+          : root.sidePanelAvailableWidth)
+      height: root.verticalEdge
+        ? (root.overlayCrossExtent > 0
+          ? Math.min(root.overlayCrossExtent, root.sidePanelAvailableHeight)
+          : root.sidePanelAvailableHeight)
+        : Math.min(root.sidePanelExtent, root.sidePanelAvailableHeight)
       transform: Translate {
         x: root.panelRevealOffsetX
         y: root.panelRevealOffsetY
       }
-      anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
-        + (root.verticalEdge && root.overlayCrossExtent > 0 ? root.overlayCrossOffset(parent.height) : 0)
-        + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
-      anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)
-        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, parent.width - root.overlayCrossExtent - root.overlayCrossOffset(parent.width)) : 0)
-        + (root.verticalEdge && root.edge === "left" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
-      anchors.bottomMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "bottom" ? root.barInset : 0)
-        + (root.verticalEdge && root.overlayCrossExtent > 0 ? Math.max(0, parent.height - root.overlayCrossExtent - root.overlayCrossOffset(parent.height)) : 0)
-        + (!root.verticalEdge && root.edge === "top" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
-      anchors.leftMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "left" ? root.barInset : 0)
-        + (!root.verticalEdge && root.overlayCrossExtent > 0 ? root.overlayCrossOffset(parent.width) : 0)
-        + (root.verticalEdge && root.edge === "right" ? Math.max(0, parent.width - root.sidePanelExtent) : 0)
       radius: root.reservesSpace ? 0 : Style.cornerRadius
       color: root.transparentBackground ? "transparent" : Color.popups.background
       border.width: root.reservesSpace || root.transparentBackground ? 0 : 1
@@ -1999,8 +2049,13 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
-              width: root.verticalEdge ? pluginList.width : root.panelWidth(pluginRow.plugin)
-              height: root.verticalEdge ? (root.editing ? header.height : 0) + content.height : pluginList.height
+              width: root.verticalEdge
+                ? (!root.reservesSpace && Number(pluginRow.plugin.width) > 0 ? root.panelWidth(pluginRow.plugin) : pluginList.width)
+                : root.panelWidth(pluginRow.plugin)
+              height: root.verticalEdge
+                ? (root.editing ? header.height : 0) + content.height
+                : (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0
+                  ? (root.editing ? header.height : 0) + content.height : pluginList.height)
               z: root.draggedId === pluginId ? 3 : 1
 
               function focusPanel() {
@@ -2146,7 +2201,8 @@ Item {
                 anchors.top: root.editing ? header.bottom : parent.top
                 width: parent.width
                 height: pluginRow.expanded
-                  ? (root.verticalEdge ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
+                  ? (root.verticalEdge || (root.editing && !root.reservesSpace && Number(pluginRow.plugin.height) > 0)
+                    ? root.panelHeight(pluginRow.plugin) : pluginList.height - (root.editing ? header.height : 0))
                   : 0
                 clip: true
 
@@ -2226,11 +2282,11 @@ Item {
 
                 Rectangle {
                   id: resizeHandle
-                  visible: root.editing && pluginRow.expanded
-                  width: root.verticalEdge ? parent.width : Math.round(Style.space(8))
-                  height: root.verticalEdge ? Math.round(Style.space(8)) : parent.height
-                  x: root.verticalEdge ? 0 : parent.width - width
-                  y: root.verticalEdge ? parent.height - height : 0
+                  visible: root.editing && pluginRow.expanded && (root.verticalEdge || !root.reservesSpace)
+                  width: parent.width
+                  height: Math.round(Style.space(8))
+                  x: 0
+                  y: parent.height - height
                   color: resizeMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
@@ -2240,14 +2296,42 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     preventStealing: true
-                    cursorShape: root.verticalEdge ? Qt.SizeVerCursor : Qt.SizeHorCursor
+                    cursorShape: Qt.SizeVerCursor
                     onPressed: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.beginResize(pluginRow.plugin, root.verticalEdge ? point.y : point.x)
+                      root.beginResize(pluginRow.plugin, "height", point.y)
                     }
                     onPositionChanged: function(mouse) {
                       var point = resizeHandle.mapToItem(keyCatcher, mouse.x, mouse.y)
-                      root.updateResize(root.verticalEdge ? point.y : point.x)
+                      root.updateResize(point.y)
+                    }
+                    onReleased: root.finishResize()
+                    onCanceled: root.cancelResize()
+                  }
+                }
+
+                Rectangle {
+                  visible: root.editing && pluginRow.expanded && (!root.verticalEdge || !root.reservesSpace)
+                  width: Math.round(Style.space(8))
+                  height: parent.height
+                  x: parent.width - width
+                  y: 0
+                  color: widthResizeMouse.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.13)
+                  MouseArea {
+                    id: widthResizeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.SizeHorCursor
+                    onPressed: function(mouse) {
+                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.beginResize(pluginRow.plugin, "width", point.x)
+                    }
+                    onPositionChanged: function(mouse) {
+                      var point = parent.mapToItem(keyCatcher, mouse.x, mouse.y)
+                      root.updateResize(point.x)
                     }
                     onReleased: root.finishResize()
                     onCanceled: root.cancelResize()
@@ -2395,91 +2479,100 @@ Item {
         }
       }
 
-      Rectangle {
-        id: sidePanelResizeHandle
-        visible: root.editing
-        width: Math.round(root.verticalEdge ? Style.space(12) : Style.space(48))
-        height: Math.round(root.verticalEdge ? Style.space(48) : Style.space(12))
-        x: root.verticalEdge
-          ? (root.edge === "left" ? parent.width - width : 0)
-          : (parent.width - width) / 2
-        y: root.verticalEdge
-          ? (parent.height - height) / 2
-          : (root.edge === "top" ? parent.height - height : 0)
-        radius: Math.min(width, height) / 2
-        color: sidePanelResizeMouse.containsMouse || root.resizingSidePanel
-          ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-          : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
-        border.width: 1
-        border.color: Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.18)
-        z: 9
+    }
 
-        Item {
+    Rectangle {
+      id: sidePanelResizeHandle
+      objectName: "sidePanelResizeHandle"
+      visible: root.settingsOpen && root.panelResizeMode
+      width: Math.round(root.verticalEdge ? Style.space(12) : Style.space(48))
+      height: Math.round(root.verticalEdge ? Style.space(48) : Style.space(12))
+      x: root.verticalEdge
+        ? (root.edge === "left" ? sidePanelBody.x + sidePanelBody.width - width : sidePanelBody.x)
+        : sidePanelBody.x + (sidePanelBody.width - width) / 2
+      y: root.verticalEdge
+        ? sidePanelBody.y + (sidePanelBody.height - height) / 2
+        : (root.edge === "top" ? sidePanelBody.y + sidePanelBody.height - height : sidePanelBody.y)
+      radius: Math.min(width, height) / 2
+      color: sidePanelResizeMouse.containsMouse || (root.resizingSidePanel && root.sidePanelResizeAxis === "edge")
+        ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+        : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
+      border.width: 1
+      border.color: Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.18)
+      z: 12
+
+      Item {
+        anchors.centerIn: parent
+        width: root.verticalEdge ? Math.round(Style.space(5)) : Math.round(Style.space(20))
+        height: root.verticalEdge ? Math.round(Style.space(20)) : Math.round(Style.space(5))
+
+        Row {
+          visible: root.verticalEdge
           anchors.centerIn: parent
-          width: root.verticalEdge ? Math.round(Style.space(5)) : Math.round(Style.space(20))
-          height: root.verticalEdge ? Math.round(Style.space(20)) : Math.round(Style.space(5))
-
-          Row {
-            visible: root.verticalEdge
-            anchors.centerIn: parent
-            spacing: 1
-            Repeater {
-              model: 3
-              delegate: Rectangle {
-                width: 1
-                height: Math.round(Style.space(14))
-                radius: width / 2
-                color: root.chromeForeground
-                opacity: 0.52
-              }
-            }
-          }
-
-          Column {
-            visible: !root.verticalEdge
-            anchors.centerIn: parent
-            spacing: 1
-            Repeater {
-              model: 3
-              delegate: Rectangle {
-                width: Math.round(Style.space(14))
-                height: 1
-                radius: height / 2
-                color: root.chromeForeground
-                opacity: 0.52
-              }
+          spacing: 1
+          Repeater {
+            model: 3
+            delegate: Rectangle {
+              width: 1
+              height: Math.round(Style.space(14))
+              radius: width / 2
+              color: root.chromeForeground
+              opacity: 0.52
             }
           }
         }
 
-        MouseArea {
-          id: sidePanelResizeMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          preventStealing: true
-          cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
-          onPressed: function(mouse) {
-            root.beginSidePanelResize("edge", root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
+        Column {
+          visible: !root.verticalEdge
+          anchors.centerIn: parent
+          spacing: 1
+          Repeater {
+            model: 3
+            delegate: Rectangle {
+              width: Math.round(Style.space(14))
+              height: 1
+              radius: height / 2
+              color: root.chromeForeground
+              opacity: 0.52
+            }
           }
-          onPositionChanged: function(mouse) {
-            root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
-          }
-          onReleased: root.finishSidePanelResize()
-          onCanceled: function() { root.resizingSidePanel = false }
         }
+      }
+
+      MouseArea {
+        id: sidePanelResizeMouse
+        anchors.fill: parent
+        hoverEnabled: true
+        preventStealing: true
+        cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
+        onPressed: function(mouse) {
+          root.beginSidePanelResize("edge", root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
+        }
+        onPositionChanged: function(mouse) {
+          root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
+        }
+        onReleased: root.finishSidePanelResize()
+        onCanceled: root.cancelSidePanelResize()
       }
     }
 
     Rectangle {
       id: sidePanelCrossResizeHandle
-      visible: root.editing && !root.reservesSpace
+      objectName: "sidePanelCrossResizeHandle"
+      visible: root.settingsOpen && root.panelResizeMode && !root.reservesSpace
       width: root.verticalEdge ? Style.space(48) : Style.space(12)
       height: root.verticalEdge ? Style.space(12) : Style.space(48)
-      x: root.verticalEdge ? sidePanelBody.x + (sidePanelBody.width - width) / 2 : sidePanelBody.x + sidePanelBody.width - width
-      y: root.verticalEdge ? sidePanelBody.y + sidePanelBody.height - height : sidePanelBody.y + (sidePanelBody.height - height) / 2
+      x: root.verticalEdge
+        ? sidePanelBody.x + (sidePanelBody.width - width) / 2
+        : (root.overlayAlignment === "right" ? sidePanelBody.x : sidePanelBody.x + sidePanelBody.width - width)
+      y: root.verticalEdge
+        ? (root.overlayAlignment === "bottom" ? sidePanelBody.y : sidePanelBody.y + sidePanelBody.height - height)
+        : sidePanelBody.y + (sidePanelBody.height - height) / 2
       radius: Math.min(width, height) / 2
-      color: crossHandle.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
-      z: 9
+      color: crossHandle.containsMouse || (root.resizingSidePanel && root.sidePanelResizeAxis === "cross")
+        ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+        : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.08)
+      z: 12
       MouseArea {
         id: crossHandle
         anchors.fill: parent
@@ -2488,6 +2581,7 @@ Item {
         onPressed: function(mouse) { var p = sidePanelCrossResizeHandle.mapToItem(surface.contentItem, mouse.x, mouse.y); root.beginSidePanelResize("cross", root.verticalEdge ? p.y : p.x) }
         onPositionChanged: function(mouse) { var p = sidePanelCrossResizeHandle.mapToItem(surface.contentItem, mouse.x, mouse.y); root.updateSidePanelResize(root.verticalEdge ? p.y : p.x) }
         onReleased: root.finishSidePanelResize()
+        onCanceled: root.cancelSidePanelResize()
       }
     }
 
@@ -2660,18 +2754,21 @@ Item {
       visible: root.settingsOpen
       z: 11
 
-      Column {
-        id: settingsContent
-        objectName: "settingsContent"
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.topMargin: Style.space(14)
-        anchors.bottomMargin: Style.space(14)
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: root.verticalEdge
-          ? parent.width - Style.space(28)
-          : Math.min(parent.width - Style.space(28), Style.space(680))
-        spacing: Style.space(14)
+      Flickable {
+        id: settingsViewport
+        anchors.fill: parent
+        anchors.margins: Style.space(14)
+        contentWidth: width
+        contentHeight: settingsContent.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        Column {
+          id: settingsContent
+          objectName: "settingsContent"
+          x: (parent.width - width) / 2
+          width: root.verticalEdge ? parent.width : Math.min(parent.width, Style.space(680))
+          spacing: Style.space(14)
 
           Item {
             width: parent.width
@@ -2718,8 +2815,8 @@ Item {
                   color: root.chromeForeground
                   font.family: Style.font.family
                   font.pixelSize: Style.font.caption
-                }
-              }
+        }
+      }
 
               MouseArea {
                 id: settingsCloseHover
@@ -2829,6 +2926,91 @@ Item {
           }
 
           Text {
+            visible: !root.reservesSpace
+            height: visible ? implicitHeight : 0
+            text: root.verticalEdge ? "OVERLAY ALIGNMENT (VERTICAL)" : "OVERLAY ALIGNMENT (HORIZONTAL)"
+            color: root.chromeForeground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            id: overlayAlignmentOptions
+            objectName: "overlayAlignmentOptions"
+            visible: !root.reservesSpace
+            width: parent.width
+            height: visible ? Math.round(Style.space(36)) : 0
+            spacing: Style.space(8)
+            Repeater {
+              model: root.verticalEdge
+                ? [{ value: "top", label: "Top" }, { value: "center", label: "Center" }, { value: "bottom", label: "Bottom" }]
+                : [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]
+              delegate: Rectangle {
+                required property var modelData
+                width: Math.floor((overlayAlignmentOptions.width - overlayAlignmentOptions.spacing * 2) / 3)
+                height: overlayAlignmentOptions.height
+                radius: Style.cornerRadius / 2
+                color: root.overlayAlignment === modelData.value
+                  ? Style.selectedFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+                Text {
+                  anchors.centerIn: parent
+                  text: modelData.label
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.persistSidePanelSetting("overlayAlignment", modelData.value)
+                }
+              }
+            }
+          }
+
+          Text {
+            text: "PANEL SIZE"
+            color: root.chromeForeground
+            opacity: 0.6
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Rectangle {
+            id: resizePanelButton
+            objectName: "resizePanelButton"
+            width: parent.width
+            height: Math.round(Style.space(42))
+            radius: Style.cornerRadius / 2
+            color: resizePanelMouse.containsMouse || root.panelResizeMode
+              ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+              : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+            Text {
+              anchors.centerIn: parent
+              text: root.panelResizeMode ? "Done resizing" : "Resize Panel"
+              color: root.chromeForeground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            MouseArea {
+              id: resizePanelMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                root.panelResizeMode = !root.panelResizeMode
+                if (!root.panelResizeMode) root.cancelSidePanelResize()
+              }
+            }
+          }
+
+          Text {
             text: "EDGE REVEAL"
             color: root.chromeForeground
             opacity: 0.6
@@ -2904,6 +3086,7 @@ Item {
               onModified: function(value) { root.persistSidePanelSetting("edgeRevealDelayMs", value) }
             }
           }
+        }
       }
     }
 

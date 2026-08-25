@@ -104,6 +104,58 @@ TestCase {
     verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
   }
 
+  function test_panel_resize_controls_are_scoped_to_settings_and_display_mode() {
+    var primaryHandle = findChild(sidePanel, "sidePanelResizeHandle")
+    var crossHandle = findChild(sidePanel, "sidePanelCrossResizeHandle")
+    verify(findChild(sidePanel, "resizePanelButton") !== null)
+    verify(primaryHandle !== null)
+    verify(crossHandle !== null)
+    verify(!primaryHandle.visible)
+    verify(!crossHandle.visible)
+
+    sidePanel.settingsOpen = true
+    sidePanel.panelResizeMode = true
+    verify(primaryHandle.visible)
+    verify(crossHandle.visible)
+
+    sidePanel.layoutMode = "reserve"
+    verify(primaryHandle.visible)
+    verify(!crossHandle.visible)
+
+    sidePanel.settingsOpen = false
+    verify(!sidePanel.panelResizeMode)
+    verify(!primaryHandle.visible)
+  }
+
+  function test_overlay_alignment_is_limited_to_the_current_edge_orientation() {
+    sidePanel.edge = "left"
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", overlayAlignment: "right", pages: [fixturePage] }
+    compare(sidePanel.overlayAlignment, "center")
+
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", overlayAlignment: "top", pages: [fixturePage] }
+    compare(sidePanel.overlayAlignment, "top")
+
+    sidePanel.edge = "top"
+    sidePanel.settings = { edge: "top", layoutMode: "overlay", overlayAlignment: "bottom", pages: [fixturePage] }
+    compare(sidePanel.overlayAlignment, "center")
+
+    sidePanel.settings = { edge: "top", layoutMode: "overlay", overlayAlignment: "left", pages: [fixturePage] }
+    compare(sidePanel.overlayAlignment, "left")
+  }
+
+  function test_cross_axis_resize_does_not_change_the_edge_axis_preview() {
+    sidePanel.layoutMode = "overlay"
+    var edgeExtent = sidePanel.sidePanelExtent
+    sidePanel.sidePanelResizeAxis = "cross"
+    sidePanel.sidePanelResizePreview = 300
+    sidePanel.resizingSidePanel = true
+
+    compare(sidePanel.sidePanelExtent, edgeExtent)
+    compare(sidePanel.overlayCrossExtent, 300)
+
+    sidePanel.cancelSidePanelResize()
+  }
+
   function test_shortcuts_page_is_available_and_escape_closes_it() {
     verify(findChild(sidePanel, "shortcutsButton") !== null)
     verify(findChild(sidePanel, "shortcutsPage") !== null)

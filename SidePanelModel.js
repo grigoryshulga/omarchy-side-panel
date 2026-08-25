@@ -111,8 +111,12 @@ function parseState(raw, defaults, resolveId) {
     }
     if (["left", "right", "top", "bottom"].indexOf(state.edge) >= 0) normalized.edge = state.edge
     if (["overlay", "reserve"].indexOf(state.layoutMode) >= 0) normalized.layoutMode = state.layoutMode
+    if (["left", "center", "right", "top", "bottom"].indexOf(state.overlayAlignment) >= 0)
+      normalized.overlayAlignment = state.overlayAlignment
     var edgeSize = normalizedExtent(state.edgeSize, MAX_EDGE_SIZE)
     if (edgeSize > 0) normalized.edgeSize = edgeSize
+    var overlayCrossSize = normalizedExtent(state.overlayCrossSize, MAX_EDGE_SIZE)
+    if (overlayCrossSize > 0) normalized.overlayCrossSize = overlayCrossSize
     return normalized
   } catch (error) {
     return null
@@ -182,7 +186,7 @@ function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.side-panel" })
   for (var key in settings || ({})) {
     if (key === "id" || key === "pages" || key === "plugins" || key === "transparentBackground") continue
-    if (key === "edgeSize") {
+    if (key === "edgeSize" || key === "overlayCrossSize") {
       var edgeSize = normalizedExtent(settings[key], MAX_EDGE_SIZE)
       if (edgeSize > 0) entry[key] = edgeSize
     } else {

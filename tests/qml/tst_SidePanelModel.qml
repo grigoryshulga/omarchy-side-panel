@@ -75,11 +75,15 @@ TestCase {
     state = SidePanelModel.parseState(JSON.stringify({
       version: 1,
       pages: [{ items: [{ id: "one", height: SidePanelModel.MAX_ITEM_EXTENT + 1, width: SidePanelModel.MAX_ITEM_EXTENT + 1 }] }],
-      edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1
+      edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1,
+      overlayCrossSize: SidePanelModel.MAX_EDGE_SIZE + 1,
+      overlayAlignment: "bottom"
     }), [], resolve)
     compare(state.pages[0].items[0].height, SidePanelModel.MAX_ITEM_EXTENT)
     compare(state.pages[0].items[0].width, SidePanelModel.MAX_ITEM_EXTENT)
     compare(state.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
+    compare(state.overlayCrossSize, SidePanelModel.MAX_EDGE_SIZE)
+    compare(state.overlayAlignment, "bottom")
   }
 
   function test_move_and_resize_are_immutable() {
@@ -103,12 +107,16 @@ TestCase {
         pages: [{ title: "Old" }],
         edge: "left",
         edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1,
+        overlayCrossSize: SidePanelModel.MAX_EDGE_SIZE + 1,
+        overlayAlignment: "top",
         transparentBackground: true
       },
       [{ title: "Main", items: [{ id: "one" }] }]
     )
     compare(entry.edge, "left")
     compare(entry.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
+    compare(entry.overlayCrossSize, SidePanelModel.MAX_EDGE_SIZE)
+    compare(entry.overlayAlignment, "top")
     verify(entry.plugins === undefined)
     verify(entry.transparentBackground === undefined)
     compare(entry.pages.length, 1)
