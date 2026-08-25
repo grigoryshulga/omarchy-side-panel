@@ -27,6 +27,9 @@ TestCase {
     compare(items[0].width, SidePanelModel.MAX_ITEM_EXTENT)
     compare(SidePanelModel.boundedEdgeSize(Infinity, 480), 480)
     compare(SidePanelModel.boundedEdgeSize(SidePanelModel.MAX_EDGE_SIZE + 1, 480), SidePanelModel.MAX_EDGE_SIZE)
+    compare(SidePanelModel.boundedInteger(Infinity, 250, 0, 2000), 250)
+    compare(SidePanelModel.boundedInteger(-1, 250, 0, 2000), 0)
+    compare(SidePanelModel.boundedInteger(3000, 250, 0, 2000), 2000)
   }
 
   function test_pages_preserve_names_and_migrate_the_legacy_plugin_list() {

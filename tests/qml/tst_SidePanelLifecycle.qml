@@ -64,4 +64,28 @@ TestCase {
     compare(sidePanel.currentPage, 1)
     tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
   }
+
+  function test_edge_reveal_settings_are_bounded() {
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      edgeRevealEnabled: false,
+      edgeRevealDelayMs: 3000,
+      pages: [fixturePage]
+    }
+
+    compare(sidePanel.edgeRevealConfigured, false)
+    compare(sidePanel.edgeRevealDelayMs, 2000)
+
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      edgeRevealEnabled: true,
+      edgeRevealDelayMs: -1,
+      pages: [fixturePage]
+    }
+
+    compare(sidePanel.edgeRevealConfigured, true)
+    compare(sidePanel.edgeRevealDelayMs, 0)
+  }
 }

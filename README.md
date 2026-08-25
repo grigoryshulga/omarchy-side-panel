@@ -47,6 +47,9 @@ there is more than one page.
   - **Overlay** floats above existing windows.
   - **Push screen** reserves edge space, so Hyprland lays out windows in the
     remaining area.
+- In Omarchy's plugin settings, **Reveal at screen edge** controls pointer
+  reveal. **Edge reveal delay** defaults to 250 ms and can be set from 0 to
+  2000 ms.
 
 ## Keyboard
 

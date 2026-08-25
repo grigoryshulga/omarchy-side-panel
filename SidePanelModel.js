@@ -15,6 +15,10 @@ function finiteNumber(value, fallback) {
   return isFinite(number) ? number : fallback
 }
 
+function boundedInteger(value, fallback, minimum, maximum) {
+  return Math.round(Math.max(minimum, Math.min(maximum, finiteNumber(value, fallback))))
+}
+
 function boundedString(value, maximum) {
   var string = value === undefined || value === null ? "" : String(value)
   return string.length > maximum ? string.slice(0, maximum) : string

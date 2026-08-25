@@ -60,6 +60,11 @@ Item {
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
+  readonly property bool edgeRevealConfigured: setting("edgeRevealEnabled", true) === true
+  readonly property bool edgeRevealEnabled: !!anchorWindow && edgeRevealConfigured
+  readonly property int edgeRevealDelayMs: SidePanelModel.boundedInteger(
+    setting("edgeRevealDelayMs", 250), 250, 0, 2000
+  )
   readonly property real configuredExtent: SidePanelModel.boundedEdgeSize(
     setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight),
     verticalEdge ? sidePanelWidth : sidePanelHeight
@@ -292,6 +297,15 @@ Item {
       statePath, String(SidePanelModel.MAX_STATE_BYTES)
     ]
     stateReader.running = true
+  }
+
+  function startEdgeReveal() {
+    if (!edgeRevealEnabled || opened) return
+    edgeRevealTimer.restart()
+  }
+
+  function cancelEdgeReveal() {
+    edgeRevealTimer.stop()
   }
 
   function resizePosition(handle, x, y) {
@@ -800,6 +814,7 @@ Item {
   }
 
   onSettingsChanged: {
+    cancelEdgeReveal()
     deactivateActivePanels("settings-change")
     var selectedTitle = currentPageRecord() ? String(currentPageRecord().title) : ""
     sidePanelPages = pagesFromSettings()
@@ -822,7 +837,10 @@ Item {
   onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentContrastForegroundChanged: scheduleTransparentForegroundRefresh()
-  onEdgeChanged: scheduleTransparentForegroundRefresh()
+  onEdgeChanged: {
+    cancelEdgeReveal()
+    scheduleTransparentForegroundRefresh()
+  }
   onSidePanelExtentChanged: scheduleTransparentForegroundRefresh()
 
   FileView {
@@ -857,6 +875,15 @@ Item {
     interval: 120
     repeat: false
     onTriggered: root.refreshTransparentForeground()
+  }
+
+  Timer {
+    id: edgeRevealTimer
+    interval: root.edgeRevealDelayMs
+    repeat: false
+    onTriggered: {
+      if (root.edgeRevealEnabled && !root.opened) root.open()
+    }
   }
 
   Process {
@@ -921,6 +948,37 @@ Item {
   }
 
   PanelWindow {
+    id: edgeRevealSurface
+    screen: root.anchorWindow ? root.anchorWindow.screen : null
+    visible: root.edgeRevealEnabled && !root.opened
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "gshulga-side-panel-edge-reveal"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    anchors { top: true; bottom: true; left: true; right: true }
+    // Only the two-pixel edge strip receives pointer input; the rest of this
+    // transparent fullscreen surface remains click-through.
+    mask: Region { item: edgeRevealArea }
+
+    Item {
+      id: edgeRevealArea
+      x: root.edge === "right" ? parent.width - width : 0
+      y: root.edge === "bottom" ? parent.height - height : 0
+      width: root.verticalEdge ? 2 : parent.width
+      height: root.verticalEdge ? parent.height : 2
+
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        onEntered: root.startEdgeReveal()
+        onExited: root.cancelEdgeReveal()
+      }
+    }
+  }
+
+  PanelWindow {
     id: surface
     screen: root.anchorWindow ? root.anchorWindow.screen : null
     visible: root.opened
@@ -955,6 +1013,7 @@ Item {
     Connections {
       target: root
       function onOpenedChanged() {
+        root.cancelEdgeReveal()
         if (!root.opened) {
           surface.focusPrimed = false
           return

@@ -20,6 +20,8 @@
     "defaults": {
       "edge": "left",
       "layoutMode": "overlay",
+      "edgeRevealEnabled": true,
+      "edgeRevealDelayMs": 250,
       "transparentBackground": false
     },
     "schema": [
@@ -38,6 +40,23 @@
         "description": "Overlay windows or reserve screen space while the side panel is open.",
         "options": ["overlay", "reserve"],
         "defaultValue": "overlay"
+      },
+      {
+        "key": "edgeRevealEnabled",
+        "type": "boolean",
+        "label": "Reveal at screen edge",
+        "description": "Open Side Panel when the pointer rests at its configured edge.",
+        "defaultValue": true
+      },
+      {
+        "key": "edgeRevealDelayMs",
+        "type": "integer",
+        "label": "Edge reveal delay (ms)",
+        "description": "How long the pointer must remain at the configured edge before Side Panel opens.",
+        "min": 0,
+        "max": 2000,
+        "step": 50,
+        "defaultValue": 250
       },
       {
         "key": "transparentBackground",
