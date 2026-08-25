@@ -239,6 +239,7 @@ Item {
     enqueuePageWarmup(currentPage, true)
     for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++)
       if (pageIndex !== currentPage) enqueuePageWarmup(pageIndex, false)
+    console.warn("[SP_WARMUP] queued=" + warmupQueue.join(","))
     advancePanelWarmup()
   }
 
@@ -261,13 +262,16 @@ Item {
       if (!item || panelIsWarmed(item)) continue
       if (panelUrl(item) === "") {
         if (canAdapt(item) && !adaptationFailed(item)) {
+          console.warn("[SP_WARMUP] waiting-for-adapter id=" + id)
           warmupQueue = [id].concat(warmupQueue)
           adaptPreferredPanels()
           return
         }
+        console.warn("[SP_WARMUP] unavailable id=" + id)
         warmedPanelIds = warmedPanelIds.concat([id])
         continue
       }
+      console.warn("[SP_WARMUP] starting id=" + id + " remaining=" + warmupQueue.length)
       warmedPanelIds = warmedPanelIds.concat([id])
       warmingPanelId = id
       return
@@ -277,6 +281,7 @@ Item {
 
   function finishPanelWarmup(item) {
     if (resolvedPluginId(item) !== warmingPanelId) return
+    console.warn("[SP_WARMUP] finished id=" + warmingPanelId)
     warmingPanelId = ""
     if (warmupQueue.length > 0) warmupTimer.restart()
   }
