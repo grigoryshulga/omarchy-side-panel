@@ -1392,27 +1392,68 @@ Item {
             id: titleRow
             anchors.top: parent.top
             width: parent.width
-            height: title.implicitHeight
+            height: Math.round(Style.space(28))
 
-            Text {
-              id: title
+            Item {
+              id: pageTitleAction
               visible: !root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? removePageButton.left : editButton.left
+              anchors.right: root.editing ? removePageButton.left : settingsButton.left
               anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
-              textFormat: Text.PlainText
-              color: root.chromeForeground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.title
-              font.bold: true
-              font.letterSpacing: 1.1
-              elide: Text.ElideRight
+              height: parent.height
+
+              Text {
+                id: title
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: titleRenameHint.visible
+                  ? Math.min(implicitWidth, Math.max(0, parent.width - titleRenameHint.width - Style.space(6)))
+                  : parent.width
+                text: root.currentPageRecord() ? String(root.currentPageRecord().title).toUpperCase() : "PLUGINS"
+                textFormat: Text.PlainText
+                color: root.chromeForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.title
+                font.bold: true
+                font.letterSpacing: 1.1
+                elide: Text.ElideRight
+              }
+
+              Rectangle {
+                id: titleRenameHint
+                visible: titleHover.containsMouse
+                x: Math.min(title.implicitWidth + Style.space(6), parent.width - width)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.round(Style.space(22))
+                height: width
+                radius: height / 2
+                color: titleRenameMouse.containsMouse
+                  ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "\uf044"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+
+                MouseArea {
+                  id: titleRenameMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.beginPageRename()
+                }
+              }
 
               MouseArea {
+                id: titleHover
                 anchors.fill: parent
-                cursorShape: Qt.IBeamCursor
+                z: -1
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onDoubleClicked: root.beginPageRename()
               }
             }
@@ -1421,7 +1462,7 @@ Item {
               id: pageTitleInput
               visible: root.renamingPage
               anchors.left: parent.left
-              anchors.right: root.editing ? removePageButton.left : editButton.left
+              anchors.right: root.editing ? removePageButton.left : settingsButton.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
               text: root.currentPageRecord() ? String(root.currentPageRecord().title) : ""
@@ -1444,11 +1485,32 @@ Item {
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              width: Math.round(Style.space(28))
-              height: width
+              readonly property bool expanded: settingsHover.containsMouse
+              width: expanded ? Math.round(Style.space(104)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
               radius: height / 2
-              color: settingsHover.containsMouse ? Style.hoverFillFor(root.chromeForeground, Color.accent) : "transparent"
-              Text { anchors.centerIn: parent; text: "\uf013"; color: root.chromeForeground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              clip: true
+              color: settingsHover.containsMouse
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
+                anchors.centerIn: parent
+                spacing: Style.space(5)
+                Text { text: "\uf013"; color: root.chromeForeground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                Text {
+                  visible: settingsButton.expanded
+                  text: "Settings"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
               MouseArea { id: settingsHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.settingsOpen = true }
             }
 
@@ -1456,24 +1518,40 @@ Item {
               id: editButton
               visible: titleRowHover.hovered || root.editing
               anchors.right: root.editing ? parent.right : pinButton.left
+              anchors.rightMargin: root.editing ? 0 : Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              width: Math.round(Style.space(28))
+              readonly property bool expanded: editHover.containsMouse
+              width: expanded ? Math.round(Style.space(82)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
               radius: height / 2
+              clip: true
               color: root.editing
                 ? Style.selectedFillFor(root.chromeForeground, Color.accent)
                 : (editHover.containsMouse
                   ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                   : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
 
-              Text {
-                id: editText
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
                 anchors.centerIn: parent
-                text: root.editing ? "\uf00c" : "\uf044"
-                color: root.chromeForeground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
+                spacing: Style.space(5)
+                Text {
+                  text: root.editing ? "\uf00c" : "\uf044"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+                Text {
+                  visible: editButton.expanded
+                  text: root.editing ? "Done" : "Edit"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
               }
 
               MouseArea {
@@ -1587,23 +1665,38 @@ Item {
               visible: !root.editing && (titleRowHover.hovered || root.pinned)
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              width: Math.round(Style.space(28))
+              readonly property bool expanded: pinHover.containsMouse
+              width: expanded ? Math.round(Style.space(root.pinned ? 86 : 72)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
               radius: height / 2
+              clip: true
               color: root.pinned
                 ? Style.selectedFillFor(root.chromeForeground, Color.accent)
                 : (pinHover.containsMouse
                   ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                   : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
 
-              Text {
-                id: pinText
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
                 anchors.centerIn: parent
-                text: "\uf08d"
-                color: root.chromeForeground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
+                spacing: Style.space(5)
+                Text {
+                  text: "\uf08d"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+                Text {
+                  visible: pinButton.expanded
+                  text: root.pinned ? "Unpin" : "Pin"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
               }
 
               MouseArea {
@@ -1760,21 +1853,40 @@ Item {
                   font.pixelSize: Style.font.subtitle
                 }
 
-                Item {
+                Rectangle {
                   id: deleteButton
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.round(Style.space(30))
-                  height: width
+                  readonly property bool expanded: deleteMouse.containsMouse
+                  width: expanded ? Math.round(Style.space(96)) : Math.round(Style.space(30))
+                  height: Math.round(Style.space(30))
+                  radius: height / 2
+                  clip: true
+                  color: deleteMouse.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
 
-                  Text {
+                  Behavior on width {
+                    NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                  }
+
+                  Row {
                     anchors.centerIn: parent
-                    text: "\uf1f8"
-                    color: root.foreground
-                    opacity: 0.5
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
+                    spacing: Style.space(5)
+                    Text {
+                      text: "\uf1f8"
+                      color: root.foreground
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+                    Text {
+                      visible: deleteButton.expanded
+                      text: "Remove"
+                      color: root.foreground
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
                   }
 
                   MouseArea {
@@ -1944,16 +2056,43 @@ Item {
               }
             }
 
-            Text {
+            Rectangle {
               id: pageAdd
               visible: root.editing
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              text: "\uf067"
-              color: root.chromeForeground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
+              readonly property bool expanded: pageAddHover.containsMouse
+              width: expanded ? Math.round(Style.space(102)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
+              radius: height / 2
+              clip: true
+              color: pageAddHover.containsMouse
+                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
+
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
+                anchors.centerIn: parent
+                spacing: Style.space(5)
+                Text {
+                  text: "\uf067"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+                Text {
+                  visible: pageAdd.expanded
+                  text: "Add page"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              MouseArea { id: pageAddHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
             }
           }
         }
@@ -2254,19 +2393,35 @@ Item {
               id: settingsClose
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              width: Math.round(Style.space(28))
-              height: width
+              readonly property bool expanded: settingsCloseHover.containsMouse
+              width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
+              height: Math.round(Style.space(28))
               radius: height / 2
+              clip: true
               color: settingsCloseHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : "transparent"
+                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
 
-              Text {
+              Behavior on width {
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+              }
+
+              Row {
                 anchors.centerIn: parent
-                text: "\uf00d"
-                color: root.chromeForeground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
+                spacing: Style.space(5)
+                Text {
+                  text: "\uf00d"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+                Text {
+                  visible: settingsClose.expanded
+                  text: "Close"
+                  color: root.chromeForeground
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
               }
 
               MouseArea {
