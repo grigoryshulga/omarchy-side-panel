@@ -113,8 +113,8 @@ Item {
   function sidePanelResizeMaximum(axis) {
     // In Reserve Space mode the surface contracts together with the Side Panel,
     // so use the physical screen for the edge-axis bound.
-    if (axis === "edge" && reservesSpace && surface.screen)
-      return Math.min(SidePanelModel.MAX_EDGE_SIZE, verticalEdge ? surface.screen.width : surface.screen.height)
+    if (axis === "edge" && reservesSpace && sidePanelScreen)
+      return Math.min(SidePanelModel.MAX_EDGE_SIZE, verticalEdge ? sidePanelScreen.width : sidePanelScreen.height)
     var available = axis === "edge"
       ? (verticalEdge ? sidePanelAvailableWidth : sidePanelAvailableHeight)
       : (verticalEdge ? sidePanelAvailableHeight : sidePanelAvailableWidth)
