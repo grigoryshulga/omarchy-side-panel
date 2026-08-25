@@ -170,6 +170,11 @@ Item {
     return value === undefined || value === null ? fallback : value
   }
 
+  Component.onCompleted: console.warn("[DEBUG-side-panel-screen] anchor=" + !!anchorWindow
+    + " anchorScreen=" + !!(anchorWindow && anchorWindow.screen)
+    + " screenCount=" + Quickshell.screens.length
+    + " selected=" + !!sidePanelScreen)
+
   function colorHex(colorValue) {
     var color = typeof colorValue === "string" ? Qt.color(colorValue) : colorValue
     function channel(value) {
