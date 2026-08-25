@@ -57,12 +57,16 @@ TestCase {
   }
 
   function test_page_change_does_not_close_sidePanel_when_embedded_panel_deactivates() {
+    var firstPanel = sidePanel.activePanels[0]
     sidePanel.selectPage(1)
 
     wait(1)
     verify(sidePanel.opened)
     compare(sidePanel.currentPage, 1)
-    tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
+    tryVerify(function() { return sidePanel.activePanels.length === 2 }, 1000)
+    verify(sidePanel.activePanels.indexOf(firstPanel) >= 0)
+    verify(sidePanel.pageIsLoaded(0))
+    verify(sidePanel.pageIsLoaded(1))
   }
 
   function test_edge_reveal_settings_are_bounded() {

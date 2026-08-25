@@ -41,6 +41,8 @@ Item {
   property var openedToplevel: null
   property bool focusDismissalArmed: false
   property var sidePanelPages: []
+  property var loadedPageIndexes: []
+  property var currentPluginList: null
   property int currentPage: 0
   readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
     ? sidePanelPages[currentPage].items : []
@@ -174,13 +176,21 @@ Item {
 
   function selectPage(index) {
     if (index < 0 || index >= sidePanelPages.length || index === currentPage) return
-    deactivateActivePanels("page-change")
     currentPage = index
+    markPageLoaded(index)
+    keyboardPluginIndex = -1
     expandedId = ""
     renamingPage = false
     persistSidePanelState()
-    panelEpoch += 1
-    if (opened) adaptPreferredPanels()
+  }
+
+  function pageIsLoaded(index) { return loadedPageIndexes.indexOf(index) >= 0 }
+
+  function markPageLoaded(index) {
+    if (index < 0 || pageIsLoaded(index)) return
+    var next = loadedPageIndexes.slice()
+    next.push(index)
+    loadedPageIndexes = next
   }
 
   function movePage(delta) {
@@ -227,27 +237,28 @@ Item {
   function moveKeyboardPlugin(delta) {
     if (pluginItems.length === 0) return
     keyboardPluginIndex = (keyboardPluginIndex + delta + pluginItems.length) % pluginItems.length
-    pluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
+    if (currentPluginList) currentPluginList.positionViewAtIndex(keyboardPluginIndex, ListView.Contain)
   }
 
   function focusKeyboardPlugin(delta) {
     moveKeyboardPlugin(delta)
     Qt.callLater(function() {
-      var row = pluginList.itemAtIndex(keyboardPluginIndex)
+      var row = currentPluginList ? currentPluginList.itemAtIndex(keyboardPluginIndex) : null
       if (row && typeof row.focusPanel === "function") row.focusPanel()
     })
   }
 
   function scrollPluginList(deltaX, deltaY) {
     if (hoveredPanelId !== "") return
+    if (!currentPluginList) return
     var delta = verticalEdge ? deltaY : (deltaX !== 0 ? deltaX : deltaY)
     if (delta === 0) return
     if (verticalEdge) {
-      var maxY = Math.max(0, pluginList.contentHeight - pluginList.height)
-      pluginList.contentY = Math.max(0, Math.min(maxY, pluginList.contentY - delta))
+      var maxY = Math.max(0, currentPluginList.contentHeight - currentPluginList.height)
+      currentPluginList.contentY = Math.max(0, Math.min(maxY, currentPluginList.contentY - delta))
     } else {
-      var maxX = Math.max(0, pluginList.contentWidth - pluginList.width)
-      pluginList.contentX = Math.max(0, Math.min(maxX, pluginList.contentX - delta))
+      var maxX = Math.max(0, currentPluginList.contentWidth - currentPluginList.width)
+      currentPluginList.contentX = Math.max(0, Math.min(maxX, currentPluginList.contentX - delta))
     }
   }
 
@@ -300,6 +311,8 @@ Item {
       return
     }
     deactivateActivePanels("state-load")
+    loadedPageIndexes = []
+    currentPluginList = null
     sidePanelState = state
     sidePanelPages = state.pages
     currentPage = state.currentPage
@@ -451,21 +464,23 @@ Item {
   }
 
   function beginDrag(row, x, y) {
+    if (!currentPluginList) return
     draggedId = row.pluginId
     var point = row.mapToItem(keyCatcher, x, y)
     dragWidth = row.width
     dragPreview.x = point.x - dragWidth / 2
     dragPreview.y = point.y - dragPreview.height / 2
-    var listPoint = keyCatcher.mapToItem(pluginList, point.x, point.y)
+    var listPoint = keyCatcher.mapToItem(currentPluginList, point.x, point.y)
     updateDropTarget(listPoint.x, listPoint.y)
   }
 
   function updateDrag(row, x, y) {
     if (draggedId !== row.pluginId) return
+    if (!currentPluginList) return
     var point = row.mapToItem(keyCatcher, x, y)
     dragPreview.x = point.x - dragWidth / 2
     dragPreview.y = point.y - dragPreview.height / 2
-    var listPoint = keyCatcher.mapToItem(pluginList, point.x, point.y)
+    var listPoint = keyCatcher.mapToItem(currentPluginList, point.x, point.y)
     updateDropTarget(listPoint.x, listPoint.y)
   }
 
@@ -491,10 +506,11 @@ Item {
 
   function updateDropTarget(x, y) {
     if (!editing || draggedId === "") return
+    if (!currentPluginList) return
     var position = verticalEdge ? y : x
     var previousRow = null
     for (var i = 0; i < pluginItems.length; i++) {
-      var row = pluginList.itemAtIndex(i)
+      var row = currentPluginList.itemAtIndex(i)
       if (!row) continue
       var start = verticalEdge ? row.y : row.x
       var extent = verticalEdge ? row.height : row.width
@@ -854,6 +870,8 @@ Item {
   onSettingsChanged: {
     cancelEdgeReveal()
     deactivateActivePanels("settings-change")
+    loadedPageIndexes = []
+    currentPluginList = null
     var selectedTitle = currentPageRecord() ? String(currentPageRecord().title) : ""
     sidePanelPages = pagesFromSettings()
     currentPage = 0
@@ -865,7 +883,10 @@ Item {
     }
     // Reload adapted panels after their previous instances have been closed.
     panelEpoch += 1
-    if (opened) adaptPreferredPanels()
+    if (opened) {
+      markPageLoaded(currentPage)
+      adaptPreferredPanels()
+    }
   }
   Component.onCompleted: {
     sidePanelPages = pagesFromSettings()
@@ -949,12 +970,16 @@ Item {
     if (opened) {
       armFocusDismissal()
       currentPage = 0
+      loadedPageIndexes = []
+      markPageLoaded(currentPage)
       adaptationErrors = ({})
       adaptPreferredPanels()
     } else {
       focusDismissalTimer.stop()
       focusDismissalArmed = false
       openedToplevel = null
+      loadedPageIndexes = []
+      currentPluginList = null
     }
   }
   onPinnedChanged: {
@@ -1497,42 +1522,57 @@ Item {
 
           }
 
-          ListView {
-            id: pluginList
+          Item {
+            id: pageListHost
             anchors.top: titleRow.bottom
             anchors.topMargin: Style.space(10)
             anchors.bottom: pageCarousel.top
             anchors.bottomMargin: Style.space(8)
             width: parent.width
-            orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
-            clip: true
-            // A plugin without its own Flickable must still let its oversized
-            // panel scroll in SidePanel's viewport. Nested Flickables consume the
-            // wheel first, so their local scrolling is preserved.
-            interactive: root.resizingId === "" && root.draggedId === ""
-            spacing: Style.space(7)
-            model: root.pluginItems
-            // Stack mode keeps every embedded panel instantiated; lifecycle is
-            // therefore independent of ListView delegate recycling. Do not
-            // bind this to contentHeight: that creates a ListView layout loop.
-            cacheBuffer: 100000
+            Repeater {
+              model: root.sidePanelPages
+              delegate: ListView {
+                id: pluginList
+                required property int index
+                required property var modelData
+                readonly property int pageIndex: index
+                anchors.fill: parent
+                visible: pageIndex === root.currentPage
+                orientation: root.verticalEdge ? ListView.Vertical : ListView.Horizontal
+                clip: true
+                // A plugin without its own Flickable must still let its oversized
+                // panel scroll in SidePanel's viewport. Nested Flickables consume the
+                // wheel first, so their local scrolling is preserved.
+                interactive: root.resizingId === "" && root.draggedId === ""
+                spacing: Style.space(7)
+                model: modelData.items || []
+                // Stack mode keeps every embedded panel instantiated; lifecycle is
+                // therefore independent of ListView delegate recycling. Do not
+                // bind this to contentHeight: that creates a ListView layout loop.
+                cacheBuffer: 100000
+                Component.onCompleted: {
+                  if (visible) root.currentPluginList = pluginList
+                }
+                onVisibleChanged: {
+                  if (visible) root.currentPluginList = pluginList
+                }
 
-            // ListView consumes a normal vertical mouse wheel before the
-            // background MouseArea sees it, and on a horizontal Side Panel it
-            // turns that wheel into horizontal content scrolling. Intercept
-            // Alt+vertical wheel here, before that conversion happens.
-            WheelHandler {
-              id: altWheelPageNavigation
-              objectName: "altWheelPageNavigation"
-              acceptedModifiers: Qt.AltModifier
-              onWheel: function(event) {
-                if (event.angleDelta.y === 0) return
-                root.movePage(event.angleDelta.y > 0 ? 1 : -1)
-                event.accepted = true
-              }
-            }
+                // ListView consumes a normal vertical mouse wheel before the
+                // background MouseArea sees it, and on a horizontal Side Panel it
+                // turns that wheel into horizontal content scrolling. Intercept
+                // Alt+vertical wheel here, before that conversion happens.
+                WheelHandler {
+                  id: altWheelPageNavigation
+                  objectName: "altWheelPageNavigation"
+                  acceptedModifiers: Qt.AltModifier
+                  onWheel: function(event) {
+                    if (event.angleDelta.y === 0) return
+                    root.movePage(event.angleDelta.y > 0 ? 1 : -1)
+                    event.accepted = true
+                  }
+                }
 
-            displaced: Transition {
+                displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
             }
 
@@ -1704,7 +1744,8 @@ Item {
                     id: pageLoader
                     anchors.fill: parent
                     anchors.margins: Style.space(10)
-                    active: root.opened && pluginRow.expanded && root.panelUrl(pluginRow.plugin) !== ""
+                    active: root.opened && root.pageIsLoaded(pluginList.pageIndex)
+                      && pluginRow.expanded && root.panelUrl(pluginRow.plugin) !== ""
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
                       root.clearPanelError(pluginRow.plugin)
@@ -1785,6 +1826,8 @@ Item {
               radius: height / 2
               color: Color.accent
               z: 3
+            }
+              }
             }
           }
 
