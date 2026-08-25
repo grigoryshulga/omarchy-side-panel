@@ -1935,10 +1935,10 @@ Item {
             anchors.top: titleRow.bottom
             anchors.topMargin: Style.space(10)
             anchors.left: parent.left
-            anchors.right: root.verticalEdge ? parent.right : pageCarousel.left
-            anchors.rightMargin: root.verticalEdge ? 0 : Style.space(8)
-            anchors.bottom: root.verticalEdge ? pageCarousel.top : parent.bottom
-            anchors.bottomMargin: root.verticalEdge ? Style.space(8) : 0
+            width: root.verticalEdge ? parent.width : Math.max(0, pageCarousel.x - Style.space(8))
+            height: root.verticalEdge
+              ? Math.max(0, pageCarousel.y - y - Style.space(8))
+              : Math.max(0, parent.height - y)
             Repeater {
               model: root.sidePanelPages
               delegate: ListView {
@@ -2255,16 +2255,14 @@ Item {
           Rectangle {
             id: pageCarousel
             objectName: "pageCarousel"
-            anchors.bottom: root.verticalEdge ? parent.bottom : undefined
-            anchors.horizontalCenter: root.verticalEdge ? parent.horizontalCenter : undefined
-            anchors.right: root.verticalEdge ? undefined : parent.right
-            anchors.verticalCenter: root.verticalEdge ? undefined : parent.verticalCenter
             width: root.verticalEdge
               ? pageDots.width + (root.editing ? pageAdd.width + Style.space(10) : 0)
               : Math.max(pageDotsVertical.width, root.editing ? pageAdd.width : 0)
             height: root.verticalEdge
               ? Math.round(Style.space(24))
               : pageDotsVertical.height + (root.editing ? pageAdd.height + Style.space(10) : 0)
+            x: root.verticalEdge ? (parent.width - width) / 2 : parent.width - width
+            y: root.verticalEdge ? parent.height - height : (parent.height - height) / 2
             color: "transparent"
 
             Row {
@@ -2310,10 +2308,8 @@ Item {
             Rectangle {
               id: pageAdd
               visible: root.editing
-              anchors.right: root.verticalEdge ? parent.right : undefined
-              anchors.verticalCenter: root.verticalEdge ? parent.verticalCenter : undefined
-              anchors.bottom: root.verticalEdge ? undefined : parent.bottom
-              anchors.horizontalCenter: root.verticalEdge ? undefined : parent.horizontalCenter
+              x: root.verticalEdge ? parent.width - width : (parent.width - width) / 2
+              y: root.verticalEdge ? (parent.height - height) / 2 : parent.height - height
               readonly property bool expanded: pageAddHover.containsMouse
               width: expanded ? Math.round(Style.space(102)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
@@ -2625,8 +2621,15 @@ Item {
 
       Column {
         id: settingsContent
-        anchors.fill: parent
-        anchors.margins: Style.space(14)
+        objectName: "settingsContent"
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.topMargin: Style.space(14)
+        anchors.bottomMargin: Style.space(14)
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.verticalEdge
+          ? parent.width - Style.space(28)
+          : Math.min(parent.width - Style.space(28), Style.space(680))
         spacing: Style.space(14)
 
           Item {
