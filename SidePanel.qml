@@ -553,8 +553,6 @@ Item {
     sidePanelResizeStart = position
     sidePanelResizeStartExtent = startExtent
     sidePanelResizePreview = startExtent
-    console.info("[DEBUG-side-panel-resize] begin axis=" + axis + " edge=" + edge
-      + " reserve=" + reservesSpace + " position=" + position + " extent=" + startExtent)
   }
 
   function updateSidePanelResize(position) {
@@ -567,12 +565,14 @@ Item {
     var available = sidePanelResizeAxis === "edge"
       ? (verticalEdge ? sidePanelAvailableWidth : sidePanelAvailableHeight)
       : (verticalEdge ? sidePanelAvailableHeight : sidePanelAvailableWidth)
+    // A Reserve Space surface is only as large as the panel itself. Its
+    // current extent must not become the resize maximum, or shrinking once
+    // makes growing back impossible.
+    if (reservesSpace && sidePanelResizeAxis === "edge" && surface.screen)
+      available = verticalEdge ? surface.screen.width : surface.screen.height
     var maximum = available > 0 ? Math.min(SidePanelModel.MAX_EDGE_SIZE, available) : SidePanelModel.MAX_EDGE_SIZE
     var minimum = Math.min(Style.space(260), maximum)
     sidePanelResizePreview = Math.round(Math.max(minimum, Math.min(maximum, sidePanelResizeStartExtent + delta)) / 5) * 5
-    console.info("[DEBUG-side-panel-resize] update axis=" + sidePanelResizeAxis + " position=" + position
-      + " delta=" + delta + " start=" + sidePanelResizeStartExtent + " preview=" + sidePanelResizePreview
-      + " minimum=" + minimum + " maximum=" + maximum)
   }
 
   function finishSidePanelResize() {
