@@ -100,17 +100,13 @@ TestCase {
 
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
-    verify(sidePanel.pageWheelHandlerEnabled(0))
-    verify(!sidePanel.pageWheelHandlerEnabled(1))
-    sidePanel.handlePanelWheel(Qt.AltModifier, 0, 120)
+    verify(sidePanel.handleAltVerticalWheel(120))
     compare(sidePanel.currentPage, 1)
-    verify(sidePanel.pageWheelHandlerEnabled(1))
-    verify(!sidePanel.pageWheelHandlerEnabled(0))
 
-    sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
+    verify(sidePanel.handleAltVerticalWheel(-120))
     compare(sidePanel.currentPage, 0)
 
-    sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
+    verify(!sidePanel.handleAltVerticalWheel(0))
     compare(sidePanel.currentPage, 0)
     verify(findChild(sidePanel, "altWheelPageNavigation") !== null)
   }

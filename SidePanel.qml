@@ -186,10 +186,6 @@ Item {
 
   function pageIsLoaded(index) { return loadedPageIndexes.indexOf(index) >= 0 }
 
-  function pageWheelHandlerEnabled(index) {
-    return opened && index === currentPage
-  }
-
   function markPageLoaded(index) {
     if (index < 0 || pageIsLoaded(index)) return
     var next = loadedPageIndexes.slice()
@@ -273,6 +269,12 @@ Item {
       return
     }
     scrollPluginList(deltaX, deltaY)
+  }
+
+  function handleAltVerticalWheel(deltaY) {
+    if (deltaY === 0) return false
+    movePage(deltaY > 0 ? 1 : -1)
+    return true
   }
 
   function persistSidePanelSetting(name, value) {
@@ -1561,25 +1563,6 @@ Item {
                   if (visible) root.currentPluginList = pluginList
                 }
 
-                // ListView consumes a normal vertical mouse wheel before the
-                // background MouseArea sees it, and on a horizontal Side Panel it
-                // turns that wheel into horizontal content scrolling. Intercept
-                // Alt+vertical wheel here, before that conversion happens.
-                WheelHandler {
-                  id: altWheelPageNavigation
-                  objectName: "altWheelPageNavigation"
-                  // Every visited page stays instantiated. Only the visible one
-                  // may consume Alt+Wheel, otherwise several cached handlers can
-                  // move through a whole cycle for one wheel event.
-                  enabled: root.pageWheelHandlerEnabled(pluginList.pageIndex)
-                  acceptedModifiers: Qt.AltModifier
-                  onWheel: function(event) {
-                    if (event.angleDelta.y === 0) return
-                    root.movePage(event.angleDelta.y > 0 ? 1 : -1)
-                    event.accepted = true
-                  }
-                }
-
                 displaced: Transition {
               NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
             }
@@ -1835,6 +1818,19 @@ Item {
               color: Color.accent
               z: 3
             }
+              }
+            }
+
+            // This is intentionally owned by the common page container rather
+            // than an individual ListView. Cached pages remain alive, but there
+            // must be exactly one handler for Alt + a normal vertical wheel.
+            WheelHandler {
+              id: altWheelPageNavigation
+              objectName: "altWheelPageNavigation"
+              acceptedModifiers: Qt.AltModifier
+              blocking: true
+              onWheel: function(event) {
+                if (root.handleAltVerticalWheel(event.angleDelta.y)) event.accepted = true
               }
             }
           }
