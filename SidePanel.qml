@@ -186,6 +186,10 @@ Item {
 
   function pageIsLoaded(index) { return loadedPageIndexes.indexOf(index) >= 0 }
 
+  function pageWheelHandlerEnabled(index) {
+    return opened && index === currentPage
+  }
+
   function markPageLoaded(index) {
     if (index < 0 || pageIsLoaded(index)) return
     var next = loadedPageIndexes.slice()
@@ -1564,6 +1568,10 @@ Item {
                 WheelHandler {
                   id: altWheelPageNavigation
                   objectName: "altWheelPageNavigation"
+                  // Every visited page stays instantiated. Only the visible one
+                  // may consume Alt+Wheel, otherwise several cached handlers can
+                  // move through a whole cycle for one wheel event.
+                  enabled: root.pageWheelHandlerEnabled(pluginList.pageIndex)
                   acceptedModifiers: Qt.AltModifier
                   onWheel: function(event) {
                     if (event.angleDelta.y === 0) return
