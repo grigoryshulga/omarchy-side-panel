@@ -1446,7 +1446,16 @@ Item {
     }
     Shortcut { sequence: "Alt+P"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.pinned = !root.pinned }
     Shortcut { sequence: "Alt+E"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.setEditing(!root.editing) }
-    Shortcut { sequence: "Alt+R"; enabled: root.opened; context: Qt.WindowShortcut; onActivated: root.beginPageRename() }
+    Shortcut {
+      sequence: "Alt+R"
+      enabled: root.opened
+      context: Qt.WindowShortcut
+      onActivated: {
+        root.settingsOpen = false
+        root.shortcutsOpen = false
+        root.beginPageRename()
+      }
+    }
     Shortcut { sequence: "Alt+X"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeCurrentPage() }
     Shortcut { sequence: "Alt+C"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.addPage() }
     Shortcut { sequence: "Alt++"; enabled: root.opened && root.editing && !root.sidePanelItemLimitReached; context: Qt.WindowShortcut; onActivated: root.catalogOpen = true }
