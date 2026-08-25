@@ -44,6 +44,7 @@ Item {
   property var warmedPanelIds: []
   property var warmupQueue: []
   property string warmingPanelId: ""
+  property int warmupRevision: 0
   property var currentPluginList: null
   property int currentPage: 0
   readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
@@ -246,8 +247,15 @@ Item {
   function resetPanelWarmup() {
     warmupTimer.stop()
     warmedPanelIds = []
+    warmupRevision += 1
     warmupQueue = []
     warmingPanelId = ""
+  }
+
+  function markPanelWarmed(id) {
+    if (warmedPanelIds.indexOf(id) >= 0) return
+    warmedPanelIds = warmedPanelIds.concat([id])
+    warmupRevision += 1
   }
 
   function advancePanelWarmup() {
@@ -268,11 +276,11 @@ Item {
           return
         }
         console.warn("[SP_WARMUP] unavailable id=" + id)
-        warmedPanelIds = warmedPanelIds.concat([id])
+        markPanelWarmed(id)
         continue
       }
       console.warn("[SP_WARMUP] starting id=" + id + " remaining=" + warmupQueue.length)
-      warmedPanelIds = warmedPanelIds.concat([id])
+      markPanelWarmed(id)
       warmingPanelId = id
       return
     }
@@ -1836,7 +1844,7 @@ Item {
                     id: pageLoader
                     anchors.fill: parent
                     anchors.margins: Style.space(10)
-                    active: root.opened && root.panelIsWarmed(pluginRow.plugin)
+                    active: root.opened && root.warmupRevision >= 0 && root.panelIsWarmed(pluginRow.plugin)
                       && root.panelUrl(pluginRow.plugin) !== ""
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
