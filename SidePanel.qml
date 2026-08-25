@@ -81,6 +81,15 @@ Item {
     verticalEdge ? sidePanelWidth : sidePanelHeight
   )
   readonly property real sidePanelExtent: resizingSidePanel ? sidePanelResizePreview : configuredExtent
+  // The layer surface itself maps on open. Animate its content from the chosen
+  // Edge so opening reads as a quick slide rather than a fade-in.
+  property real panelRevealProgress: 0
+  readonly property real panelRevealOffsetX: verticalEdge
+    ? (edge === "left" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
+    : 0
+  readonly property real panelRevealOffsetY: !verticalEdge
+    ? (edge === "top" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
+    : 0
   readonly property color foreground: Color.popups.text
   readonly property color transparentTextForeground: Color.bar.text
   readonly property color transparentContrastForeground: Color.background
@@ -999,12 +1008,20 @@ Item {
     return opened && !pinned && reservesSpace
   }
 
-  function open() { opened = true }
+  function open() {
+    if (opened) return
+    panelRevealProgress = 0
+    opened = true
+    Qt.callLater(function() {
+      if (opened) panelRevealProgress = 1
+    })
+  }
   function close() {
     if (closing || !opened) return
     closing = true
     deactivateActivePanels("sidePanel-close")
     opened = false
+    panelRevealProgress = 0
     pinned = false
     catalogOpen = false
     settingsOpen = false
@@ -1018,6 +1035,10 @@ Item {
     closing = false
   }
   function toggle() { opened ? close() : open() }
+
+  Behavior on panelRevealProgress {
+    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+  }
 
   function handleEscape() {
     if (catalogOpen) catalogOpen = false
@@ -1484,6 +1505,10 @@ Item {
       id: sidePanelBody
       anchors.fill: parent
       z: 1
+      transform: Translate {
+        x: root.panelRevealOffsetX
+        y: root.panelRevealOffsetY
+      }
       anchors.topMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "top" ? root.barInset : 0)
         + (!root.verticalEdge && root.edge === "bottom" ? Math.max(0, parent.height - root.sidePanelExtent) : 0)
       anchors.rightMargin: root.overlayGap + (!root.reservesSpace && root.barPosition === "right" ? root.barInset : 0)

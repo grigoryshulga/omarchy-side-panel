@@ -115,6 +115,30 @@ TestCase {
     verify(sidePanel.opened)
   }
 
+  function test_reveal_animation_starts_outside_the_configured_edge() {
+    sidePanel.panelRevealProgress = 0
+    wait(180)
+
+    sidePanel.edge = "left"
+    verify(sidePanel.panelRevealOffsetX < 0)
+    compare(sidePanel.panelRevealOffsetY, 0)
+
+    sidePanel.edge = "right"
+    verify(sidePanel.panelRevealOffsetX > 0)
+
+    sidePanel.edge = "top"
+    compare(sidePanel.panelRevealOffsetX, 0)
+    verify(sidePanel.panelRevealOffsetY < 0)
+
+    sidePanel.edge = "bottom"
+    verify(sidePanel.panelRevealOffsetY > 0)
+
+    sidePanel.panelRevealProgress = 1
+    wait(180)
+    compare(sidePanel.panelRevealOffsetX, 0)
+    compare(sidePanel.panelRevealOffsetY, 0)
+  }
+
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
     sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
