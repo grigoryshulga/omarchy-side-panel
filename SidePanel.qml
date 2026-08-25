@@ -247,6 +247,15 @@ Item {
     }
   }
 
+  function handlePanelWheel(modifiers, deltaX, deltaY) {
+    if (modifiers & Qt.AltModifier) {
+      if (deltaY > 0) movePage(1)
+      else if (deltaY < 0) movePage(-1)
+      return
+    }
+    scrollPluginList(deltaX, deltaY)
+  }
+
   function persistSidePanelSetting(name, value) {
     if (name === "edgeSize")
       value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
@@ -1145,16 +1154,7 @@ Item {
         anchors.fill: parent
         z: -1
         onWheel: function(wheel) {
-          root.scrollPluginList(wheel.angleDelta.x, wheel.angleDelta.y)
-          wheel.accepted = true
-        }
-      }
-
-      WheelHandler {
-        acceptedModifiers: Qt.AltModifier
-        onWheel: function(wheel) {
-          if (wheel.angleDelta.y > 0) root.movePage(1)
-          else if (wheel.angleDelta.y < 0) root.movePage(-1)
+          root.handlePanelWheel(wheel.modifiers, wheel.angleDelta.x, wheel.angleDelta.y)
           wheel.accepted = true
         }
       }

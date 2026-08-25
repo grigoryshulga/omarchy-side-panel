@@ -93,4 +93,13 @@ TestCase {
     verify(findChild(sidePanel, "edgeRevealEnabledControl") !== null)
     verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
   }
+
+  function test_alt_wheel_moves_between_pages() {
+    sidePanel.currentPage = 0
+    sidePanel.handlePanelWheel(Qt.AltModifier, 0, 120)
+    compare(sidePanel.currentPage, 1)
+
+    sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
+    compare(sidePanel.currentPage, 0)
+  }
 }
