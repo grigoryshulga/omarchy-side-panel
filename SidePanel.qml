@@ -553,6 +553,8 @@ Item {
     sidePanelResizeStart = position
     sidePanelResizeStartExtent = startExtent
     sidePanelResizePreview = startExtent
+    console.info("[DEBUG-side-panel-resize] begin axis=" + axis + " edge=" + edge
+      + " reserve=" + reservesSpace + " position=" + position + " extent=" + startExtent)
   }
 
   function updateSidePanelResize(position) {
@@ -568,6 +570,9 @@ Item {
     var maximum = available > 0 ? Math.min(SidePanelModel.MAX_EDGE_SIZE, available) : SidePanelModel.MAX_EDGE_SIZE
     var minimum = Math.min(Style.space(260), maximum)
     sidePanelResizePreview = Math.round(Math.max(minimum, Math.min(maximum, sidePanelResizeStartExtent + delta)) / 5) * 5
+    console.info("[DEBUG-side-panel-resize] update axis=" + sidePanelResizeAxis + " position=" + position
+      + " delta=" + delta + " start=" + sidePanelResizeStartExtent + " preview=" + sidePanelResizePreview
+      + " minimum=" + minimum + " maximum=" + maximum)
   }
 
   function finishSidePanelResize() {
