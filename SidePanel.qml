@@ -43,7 +43,6 @@ Item {
   property var sidePanelPages: []
   property var warmedPanelIds: []
   property var warmupQueue: []
-  property string warmingPanelId: ""
   property var currentPluginList: null
   property int currentPage: 0
   readonly property var pluginItems: sidePanelPages.length > 0 && sidePanelPages[currentPage]
@@ -225,14 +224,14 @@ Item {
     var items = page.items || []
     for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
       var id = resolvedPluginId(items[itemIndex])
-      if (!panelIsWarmed(items[itemIndex]) && warmingPanelId !== id && requested.indexOf(id) < 0)
+      if (!panelIsWarmed(items[itemIndex]) && requested.indexOf(id) < 0)
         requested.push(id)
     }
     var remaining = []
     for (var queueIndex = 0; queueIndex < warmupQueue.length; queueIndex++)
       if (requested.indexOf(warmupQueue[queueIndex]) < 0) remaining.push(warmupQueue[queueIndex])
     warmupQueue = prioritize ? requested.concat(remaining) : remaining.concat(requested)
-    if (warmupQueue.length > 0 && warmingPanelId === "") warmupTimer.restart()
+    if (warmupQueue.length > 0) warmupTimer.restart()
   }
 
   function enqueueAllPanelWarmups() {
@@ -247,7 +246,6 @@ Item {
     warmupTimer.stop()
     warmedPanelIds = []
     warmupQueue = []
-    warmingPanelId = ""
   }
 
   function markPanelWarmed(id) {
@@ -256,7 +254,7 @@ Item {
   }
 
   function advancePanelWarmup() {
-    if (!opened || warmingPanelId !== "") {
+    if (!opened) {
       warmupTimer.stop()
       return
     }
@@ -278,18 +276,9 @@ Item {
       }
       console.warn("[SP_WARMUP] starting id=" + id + " remaining=" + warmupQueue.length)
       markPanelWarmed(id)
-      warmingPanelId = id
       return
     }
     warmupTimer.stop()
-  }
-
-  function finishPanelWarmup(item) {
-    if (warmingPanelId === "") return
-    console.warn("[SP_WARMUP] finished queued=" + warmingPanelId
-                 + " loaded=" + resolvedPluginId(item))
-    warmingPanelId = ""
-    if (warmupQueue.length > 0) warmupTimer.restart()
   }
 
   function movePage(delta) {
@@ -1662,6 +1651,8 @@ Item {
                 // therefore independent of ListView delegate recycling. Do not
                 // bind this to contentHeight: that creates a ListView layout loop.
                 cacheBuffer: 100000
+                displayMarginBeginning: 100000
+                displayMarginEnd: 100000
                 Component.onCompleted: {
                   if (visible) root.currentPluginList = pluginList
                 }
@@ -1841,20 +1832,17 @@ Item {
                     id: pageLoader
                     anchors.fill: parent
                     anchors.margins: Style.space(10)
+                    asynchronous: true
                     active: root.opened
                       && root.warmedPanelIds.indexOf(root.resolvedPluginId(pluginRow.plugin)) >= 0
                       && root.panelUrl(pluginRow.plugin) !== ""
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
                       root.clearPanelError(pluginRow.plugin)
-                      root.finishPanelWarmup(pluginRow.plugin)
                       root.injectPanel(item, pluginRow.plugin)
                     }
                     onStatusChanged: {
-                      if (status === Loader.Error) {
-                        root.setPanelError(pluginRow.plugin, "The embedded page could not be loaded.")
-                        root.finishPanelWarmup(pluginRow.plugin)
-                      }
+                      if (status === Loader.Error) root.setPanelError(pluginRow.plugin, "The embedded page could not be loaded.")
                     }
                   }
 

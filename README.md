@@ -130,7 +130,7 @@ Omarchy; its bounded saved state is stored in the XDG state directory.
 
 To keep the shell responsive, Side Panel allows at most 48 items in total. On
 open it starts the current Side Panel page first, then warms remaining embedded
-pages one at a time; warmed pages stay loaded until the Side Panel closes.
+pages incrementally; warmed pages stay loaded until the Side Panel closes.
 
 ## Development
 
