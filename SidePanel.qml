@@ -1840,8 +1840,8 @@ Item {
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
                       root.clearPanelError(pluginRow.plugin)
-                      root.injectPanel(item, pluginRow.plugin)
                       root.finishPanelWarmup(pluginRow.plugin)
+                      root.injectPanel(item, pluginRow.plugin)
                     }
                     onStatusChanged: {
                       if (status === Loader.Error) {
