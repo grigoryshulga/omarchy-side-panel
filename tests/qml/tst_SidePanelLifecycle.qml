@@ -100,15 +100,14 @@ TestCase {
 
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
-    sidePanel.handlePanelWheel(Qt.AltModifier, 0, 120)
+    sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
     compare(sidePanel.currentPage, 1)
 
-    sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
+    sidePanel.handlePanelWheel(Qt.AltModifier, -120, 0)
     compare(sidePanel.currentPage, 0)
 
-    sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)
+    sidePanel.handlePanelWheel(Qt.AltModifier, 0, 120)
     compare(sidePanel.currentPage, 0)
-    verify(findChild(sidePanel, "altWheelPageNavigation") !== null)
   }
 
   function test_escape_keeps_a_pinned_side_panel_open() {

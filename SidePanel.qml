@@ -251,7 +251,7 @@ Item {
   function scrollPluginList(deltaX, deltaY) {
     if (hoveredPanelId !== "") return
     if (!currentPluginList) return
-    var delta = verticalEdge ? deltaY : (deltaX !== 0 ? deltaX : deltaY)
+    var delta = verticalEdge ? deltaX : deltaY
     if (delta === 0) return
     if (verticalEdge) {
       var maxY = Math.max(0, currentPluginList.contentHeight - currentPluginList.height)
@@ -263,9 +263,13 @@ Item {
   }
 
   function handlePanelWheel(modifiers, deltaX, deltaY) {
+    // PanelWindow reports the primary wheel on the axis perpendicular to its
+    // edge: X for left/right panels and Y for top/bottom panels. This keeps the
+    // MX Master thumb wheel from being mistaken for the primary wheel.
+    var primaryWheelDelta = verticalEdge ? deltaX : deltaY
     if (modifiers & Qt.AltModifier) {
-      if (deltaY > 0) movePage(1)
-      else if (deltaY < 0) movePage(-1)
+      if (primaryWheelDelta > 0) movePage(1)
+      else if (primaryWheelDelta < 0) movePage(-1)
       return
     }
     scrollPluginList(deltaX, deltaY)
@@ -1272,9 +1276,6 @@ Item {
         anchors.fill: parent
         z: -1
         onWheel: function(wheel) {
-          console.warn("[SP_WHEEL] fallback angle=" + wheel.angleDelta.x + "," + wheel.angleDelta.y
-                       + " pixel=" + wheel.pixelDelta.x + "," + wheel.pixelDelta.y
-                       + " modifiers=" + wheel.modifiers)
           root.handlePanelWheel(wheel.modifiers, wheel.angleDelta.x, wheel.angleDelta.y)
           wheel.accepted = true
         }
@@ -1558,35 +1559,6 @@ Item {
                 }
                 onVisibleChanged: {
                   if (visible) root.currentPluginList = pluginList
-                }
-
-                // Cached pages retain their embedded content, but exactly one
-                // page-level wheel handler may exist. Keeping it in a Loader
-                // makes the handler itself follow visibility rather than merely
-                // disabling several competing handlers.
-                Loader {
-                  id: activePageWheelHandler
-                  active: pluginList.visible
-                  anchors.fill: parent
-                  sourceComponent: Component {
-                    Item {
-                      anchors.fill: parent
-                      WheelHandler {
-                        objectName: "altWheelPageNavigation"
-                        acceptedModifiers: Qt.AltModifier
-                        orientation: Qt.Vertical
-                        onWheel: function(event) {
-                          console.warn("[SP_WHEEL] page-handler page=" + pluginList.pageIndex
-                                       + " angle=" + event.angleDelta.x + "," + event.angleDelta.y
-                                       + " pixel=" + event.pixelDelta.x + "," + event.pixelDelta.y
-                                       + " modifiers=" + event.modifiers)
-                          if (event.angleDelta.y === 0) return
-                          root.movePage(event.angleDelta.y > 0 ? 1 : -1)
-                          event.accepted = true
-                        }
-                      }
-                    }
-                  }
                 }
 
                 displaced: Transition {
