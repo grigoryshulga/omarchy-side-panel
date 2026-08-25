@@ -2591,9 +2591,15 @@ Item {
         preventStealing: true
         cursorShape: root.verticalEdge ? Qt.SizeHorCursor : Qt.SizeVerCursor
         onPressed: function(mouse) {
+          console.warn("[DEBUG-external-panel-resize] pressed edge=" + root.edge
+            + " vertical=" + root.verticalEdge + " reserve=" + root.reservesSpace
+            + " localY=" + mouse.y + " surfaceHeight=" + surface.height)
           root.beginSidePanelResize("edge", root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
         }
         onPositionChanged: function(mouse) {
+          console.warn("[DEBUG-external-panel-resize] moved edge=" + root.edge
+            + " vertical=" + root.verticalEdge + " reserve=" + root.reservesSpace
+            + " localY=" + mouse.y + " surfaceHeight=" + surface.height)
           root.updateSidePanelResize(root.resizePosition(sidePanelResizeHandle, mouse.x, mouse.y))
         }
         onReleased: root.finishSidePanelResize()
