@@ -1557,17 +1557,28 @@ Item {
                   if (visible) root.currentPluginList = pluginList
                 }
 
-                // Keep this handler on the ListView itself: a horizontal
-                // ListView otherwise converts an ordinary vertical wheel into
-                // horizontal content scrolling before SidePanel can see Alt.
-                WheelHandler {
-                  id: altWheelPageNavigation
-                  objectName: "altWheelPageNavigation"
-                  acceptedModifiers: Qt.AltModifier
-                  onWheel: function(event) {
-                    if (event.angleDelta.y === 0) return
-                    root.movePage(event.angleDelta.y > 0 ? 1 : -1)
-                    event.accepted = true
+                // Cached pages retain their embedded content, but exactly one
+                // page-level wheel handler may exist. Keeping it in a Loader
+                // makes the handler itself follow visibility rather than merely
+                // disabling several competing handlers.
+                Loader {
+                  id: activePageWheelHandler
+                  active: pluginList.visible
+                  anchors.fill: parent
+                  sourceComponent: Component {
+                    Item {
+                      anchors.fill: parent
+                      WheelHandler {
+                        objectName: "altWheelPageNavigation"
+                        acceptedModifiers: Qt.AltModifier
+                        orientation: Qt.Vertical
+                        onWheel: function(event) {
+                          if (event.angleDelta.y === 0) return
+                          root.movePage(event.angleDelta.y > 0 ? 1 : -1)
+                          event.accepted = true
+                        }
+                      }
+                    }
                   }
                 }
 
