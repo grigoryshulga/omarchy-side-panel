@@ -1827,7 +1827,11 @@ Item {
             WheelHandler {
               id: altWheelPageNavigation
               objectName: "altWheelPageNavigation"
+              // Trackpads and some mice expose their ordinary scroll as a
+              // TouchPad device. Accept both, while ignoring a horizontal axis.
+              acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
               acceptedModifiers: Qt.AltModifier
+              orientation: Qt.Vertical
               blocking: true
               onWheel: function(event) {
                 if (root.handleAltVerticalWheel(event.angleDelta.y)) event.accepted = true
