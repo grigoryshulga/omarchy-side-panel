@@ -156,6 +156,20 @@ TestCase {
     sidePanel.cancelSidePanelResize()
   }
 
+  function test_panel_resize_snapshots_the_edge_extent_before_preview_starts() {
+    sidePanel.layoutMode = "overlay"
+    sidePanel.sidePanelResizeAxis = "edge"
+    sidePanel.sidePanelResizePreview = 0
+    sidePanel.resizingSidePanel = false
+    var expectedExtent = sidePanel.sidePanelExtent
+
+    sidePanel.beginSidePanelResize("edge", 100)
+
+    compare(sidePanel.sidePanelResizeStartExtent, expectedExtent)
+    compare(sidePanel.sidePanelResizePreview, expectedExtent)
+    sidePanel.cancelSidePanelResize()
+  }
+
   function test_shortcuts_page_is_available_and_escape_closes_it() {
     verify(findChild(sidePanel, "shortcutsButton") !== null)
     verify(findChild(sidePanel, "shortcutsPage") !== null)

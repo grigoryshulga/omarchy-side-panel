@@ -541,12 +541,16 @@ Item {
   }
 
   function beginSidePanelResize(axis, position) {
+    // Snapshot the visible extent before enabling the preview. A zero preview
+    // means "fill the available cross axis", so enabling it first made the
+    // cross-axis handle jump to fullscreen and the edge handle start at zero.
+    var startExtent = axis === "edge" ? sidePanelExtent
+      : (verticalEdge ? sidePanelBody.height : sidePanelBody.width)
     resizingSidePanel = true
     sidePanelResizeAxis = axis
     sidePanelResizeStart = position
-    sidePanelResizeStartExtent = axis === "edge" ? sidePanelExtent
-      : (verticalEdge ? sidePanelBody.height : sidePanelBody.width)
-    sidePanelResizePreview = sidePanelResizeStartExtent
+    sidePanelResizeStartExtent = startExtent
+    sidePanelResizePreview = startExtent
   }
 
   function updateSidePanelResize(position) {
