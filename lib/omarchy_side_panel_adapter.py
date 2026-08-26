@@ -19,6 +19,12 @@ class AdaptationError(Exception):
 
 
 ADAPTER_VERSION = "side-panel-adapter-v1"
+MAX_ENTRY_POINT_BYTES = 1024 * 1024
+MAX_SOURCE_ENTRIES = 1024
+MAX_SOURCE_FILES = 512
+MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
+MAX_SOURCE_TREE_BYTES = 16 * 1024 * 1024
+COPY_CHUNK_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,13 @@ class ObjectNode:
     type_token: Token
     open_token: Token
     close_token: Token
+
+
+@dataclass(frozen=True)
+class SourceTreeEntry:
+    path: Path
+    relative: Path
+    metadata: os.stat_result
 
 
 def tokens(source: str) -> list[Token]:
@@ -207,23 +220,66 @@ def transform_qml(source: str) -> str:
     return replace_ranges(source, replacements)
 
 
-def source_tree_digest(source_dir: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(source_dir.rglob("*")):
+def source_tree_entries(source_dir: Path) -> list[SourceTreeEntry]:
+    """Return a bounded, symlink-free snapshot of a plugin source tree."""
+    entries: list[SourceTreeEntry] = []
+    file_count = 0
+    total_bytes = 0
+    for path in source_dir.rglob("*"):
         relative = path.relative_to(source_dir)
         metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
             raise AdaptationError(f"source contains a symlink: {relative}")
+        if len(entries) >= MAX_SOURCE_ENTRIES:
+            raise AdaptationError("source contains too many entries")
         if path.is_dir():
-            digest.update(f"D:{relative}\n".encode())
-        elif path.is_file():
-            digest.update(f"F:{relative}\0".encode())
-            with path.open("rb") as file:
-                for chunk in iter(lambda: file.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        else:
+            entries.append(SourceTreeEntry(path, relative, metadata))
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
             raise AdaptationError(f"source contains an unsupported file: {relative}")
+        file_count += 1
+        if file_count > MAX_SOURCE_FILES:
+            raise AdaptationError("source contains too many files")
+        if metadata.st_size > MAX_SOURCE_FILE_BYTES:
+            raise AdaptationError(f"source file exceeds maximum size: {relative}")
+        total_bytes += metadata.st_size
+        if total_bytes > MAX_SOURCE_TREE_BYTES:
+            raise AdaptationError("source tree exceeds maximum size")
+        entries.append(SourceTreeEntry(path, relative, metadata))
+    return sorted(entries, key=lambda entry: entry.relative.as_posix())
+
+
+def source_tree_digest(source_dir: Path, entries: list[SourceTreeEntry] | None = None) -> str:
+    digest = hashlib.sha256()
+    digested_bytes = 0
+    for entry in entries if entries is not None else source_tree_entries(source_dir):
+        if stat.S_ISDIR(entry.metadata.st_mode):
+            digest.update(f"D:{entry.relative}\n".encode())
+            continue
+        digest.update(f"F:{entry.relative}\0".encode())
+        with entry.path.open("rb") as file:
+            digested_file_bytes = 0
+            for chunk in iter(lambda: file.read(COPY_CHUNK_BYTES), b""):
+                digested_file_bytes += len(chunk)
+                digested_bytes += len(chunk)
+                if digested_file_bytes > MAX_SOURCE_FILE_BYTES or digested_bytes > MAX_SOURCE_TREE_BYTES:
+                    raise AdaptationError("source tree exceeds maximum size while hashing")
+                digest.update(chunk)
     return digest.hexdigest()
+
+
+def read_entry_point(source: Path) -> str:
+    """Read one QML entry point without allocating more than its fixed limit."""
+    if source.stat().st_size > MAX_ENTRY_POINT_BYTES:
+        raise AdaptationError("entry point exceeds maximum size")
+    with source.open("rb") as file:
+        content = file.read(MAX_ENTRY_POINT_BYTES + 1)
+    if len(content) > MAX_ENTRY_POINT_BYTES:
+        raise AdaptationError("entry point exceeds maximum size")
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AdaptationError("entry point is not valid UTF-8") from error
 
 
 def choose_source(source_dir: Path, entry_point: str) -> Path:
@@ -234,7 +290,7 @@ def choose_source(source_dir: Path, entry_point: str) -> Path:
     if not candidate.is_file() or source_dir not in candidate.parents:
         raise AdaptationError("entry point is outside its plugin directory")
     source = candidate
-    if not has_standard_host(source.read_text(encoding="utf-8")):
+    if not has_standard_host(read_entry_point(source)):
         sibling = (source_dir / "Panel.qml").resolve()
         if sibling.is_file() and source_dir in sibling.parents:
             source = sibling
@@ -246,7 +302,23 @@ def has_standard_host(source: str) -> bool:
 
 
 def copy_tree(source_dir: Path, target_dir: Path) -> None:
-    shutil.copytree(source_dir, target_dir, symlinks=True, copy_function=shutil.copy2)
+    """Copy a second bounded snapshot instead of delegating to unbounded copytree."""
+    copied_bytes = 0
+    target_dir.mkdir()
+    for entry in source_tree_entries(source_dir):
+        target = target_dir / entry.relative
+        if stat.S_ISDIR(entry.metadata.st_mode):
+            target.mkdir()
+            continue
+        with entry.path.open("rb") as source, target.open("xb") as destination:
+            copied_file_bytes = 0
+            while chunk := source.read(COPY_CHUNK_BYTES):
+                copied_file_bytes += len(chunk)
+                copied_bytes += len(chunk)
+                if copied_file_bytes > MAX_SOURCE_FILE_BYTES or copied_bytes > MAX_SOURCE_TREE_BYTES:
+                    raise AdaptationError("source tree exceeds maximum size while copying")
+                destination.write(chunk)
+        target.chmod(stat.S_IMODE(entry.metadata.st_mode))
 
 
 def is_within(path: Path, parent: Path) -> bool:
@@ -312,8 +384,9 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
         raise AdaptationError("cache root must not overlap the source plugin")
 
     entry_source = choose_source(source_dir, entry_point)
-    source_digest = source_tree_digest(source_dir)
-    source = rebase_external_relative_imports(entry_source.read_text(encoding="utf-8"), source_dir, entry_source)
+    source_entries = source_tree_entries(source_dir)
+    source_digest = source_tree_digest(source_dir, source_entries)
+    source = rebase_external_relative_imports(read_entry_point(entry_source), source_dir, entry_source)
     transformed = transform_qml(source)
     namespace = hashlib.sha256(plugin_id.encode("utf-8")).hexdigest()[:24]
     fingerprint = hashlib.sha256((source_digest + "\0" + ADAPTER_VERSION).encode()).hexdigest()[:24]

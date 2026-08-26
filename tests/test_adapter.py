@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -102,6 +103,34 @@ Panel {
             (source / "linked.qml").symlink_to(source / "Panel.qml")
             with self.assertRaisesRegex(adapter.AdaptationError, "symlink"):
                 adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+
+    def test_rejects_an_entry_point_larger_than_one_megabyte_before_adapting(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root, PANEL + " " * (1024 * 1024))
+
+            with self.assertRaisesRegex(adapter.AdaptationError, "entry point exceeds"):
+                adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+
+    def test_rejects_a_plugin_tree_with_more_than_512_files_before_copying(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            for index in range(512):
+                (source / f"extra-{index}.qml").write_text("Item {}\n")
+
+            with self.assertRaisesRegex(adapter.AdaptationError, "too many files"):
+                adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+
+    def test_rejects_a_plugin_tree_larger_than_its_byte_budget_before_copying(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            (source / "asset.bin").write_bytes(b"x" * 64)
+
+            with mock.patch.object(adapter, "MAX_SOURCE_TREE_BYTES", len(PANEL.encode("utf-8"))):
+                with self.assertRaisesRegex(adapter.AdaptationError, "tree exceeds"):
+                    adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
 
     def test_rejects_cache_overlap_before_creating_staging_files(self):
         with tempfile.TemporaryDirectory() as temporary:
