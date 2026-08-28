@@ -3,28 +3,39 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import fcntl
 import hashlib
+import json
 import os
 import re
-import shutil
 import stat
 import sys
 import tempfile
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 
 class AdaptationError(Exception):
     """The source does not satisfy SidePanel's deliberately narrow contract."""
 
 
-ADAPTER_VERSION = "side-panel-adapter-v1"
+ADAPTER_VERSION = "side-panel-adapter-v2"
 MAX_ENTRY_POINT_BYTES = 1024 * 1024
 MAX_SOURCE_ENTRIES = 1024
 MAX_SOURCE_FILES = 512
 MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
 MAX_SOURCE_TREE_BYTES = 16 * 1024 * 1024
+MAX_SOURCE_DEPTH = 128
+MAX_MARKER_BYTES = 256 * 1024
 COPY_CHUNK_BYTES = 64 * 1024
+MAX_CACHED_ARTIFACTS = 8
+STALE_STAGING_SECONDS = 24 * 60 * 60
+MARKER_NAME = ".omarchy-side-panel-adapted"
+HELPER_NAMES = ("SidePanelHost.qml", "SidePanelDisabledIpc.qml", "SidePanelHiddenBarButton.qml")
 
 
 @dataclass(frozen=True)
@@ -42,11 +53,11 @@ class ObjectNode:
     close_token: Token
 
 
-@dataclass(frozen=True)
-class SourceTreeEntry:
-    path: Path
-    relative: Path
-    metadata: os.stat_result
+@dataclass
+class TreeBudget:
+    entries: int = 0
+    files: int = 0
+    bytes: int = 0
 
 
 def tokens(source: str) -> list[Token]:
@@ -151,10 +162,15 @@ def contains(node: ObjectNode, child: ObjectNode) -> bool:
 
 
 def replace_ranges(source: str, replacements: list[tuple[int, int, str]]) -> str:
-    result = source
-    for start, end, value in sorted(replacements, reverse=True):
-        result = result[:start] + value + result[end:]
-    return result
+    chunks: list[str] = []
+    cursor = 0
+    for start, end, value in sorted(replacements):
+        if start < cursor or end < start or end > len(source):
+            raise AdaptationError("overlapping or invalid source transformation")
+        chunks.extend((source[cursor:start], value))
+        cursor = end
+    chunks.append(source[cursor:])
+    return "".join(chunks)
 
 
 def transform_qml(source: str) -> str:
@@ -220,60 +236,146 @@ def transform_qml(source: str) -> str:
     return replace_ranges(source, replacements)
 
 
-def source_tree_entries(source_dir: Path) -> list[SourceTreeEntry]:
-    """Return a bounded, symlink-free snapshot of a plugin source tree."""
-    entries: list[SourceTreeEntry] = []
-    file_count = 0
-    total_bytes = 0
-    for path in source_dir.rglob("*"):
-        relative = path.relative_to(source_dir)
-        metadata = path.lstat()
-        if stat.S_ISLNK(metadata.st_mode):
-            raise AdaptationError(f"source contains a symlink: {relative}")
-        if len(entries) >= MAX_SOURCE_ENTRIES:
+def digest_field(digest: "hashlib._Hash", value: bytes) -> None:
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
+
+
+def digest_entry(
+    digest: "hashlib._Hash", kind: bytes, relative: Path, mode: int, size: int, content_digest: bytes = b""
+) -> None:
+    digest_field(digest, kind)
+    digest_field(digest, relative.as_posix().encode("utf-8", "surrogateescape"))
+    digest_field(digest, stat.S_IMODE(mode).to_bytes(4, "big"))
+    digest_field(digest, size.to_bytes(8, "big"))
+    digest_field(digest, content_digest)
+
+
+def open_tree_entry(parent_descriptor: int, name: str, relative: Path) -> int:
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise AdaptationError("O_NOFOLLOW is unavailable")
+    try:
+        return os.open(name, flags | os.O_NOFOLLOW, dir_fd=parent_descriptor)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.EMLINK):
+            raise AdaptationError(f"source contains a symlink: {relative}") from error
+        raise
+
+
+def walk_tree(
+    source_descriptor: int,
+    relative_dir: Path,
+    digest: "hashlib._Hash",
+    budget: TreeBudget,
+    target_dir: Path | None,
+    skipped_root_names: frozenset[str],
+    depth: int = 0,
+) -> None:
+    names: list[str] = []
+    with os.scandir(source_descriptor) as iterator:
+        for entry in iterator:
+            if relative_dir == Path() and entry.name in skipped_root_names:
+                continue
+            names.append(entry.name)
+            if budget.entries + len(names) > MAX_SOURCE_ENTRIES:
+                raise AdaptationError("source contains too many entries")
+
+    for name in sorted(names):
+        if budget.entries >= MAX_SOURCE_ENTRIES:
             raise AdaptationError("source contains too many entries")
-        if path.is_dir():
-            entries.append(SourceTreeEntry(path, relative, metadata))
-            continue
-        if not stat.S_ISREG(metadata.st_mode):
-            raise AdaptationError(f"source contains an unsupported file: {relative}")
-        file_count += 1
-        if file_count > MAX_SOURCE_FILES:
-            raise AdaptationError("source contains too many files")
-        if metadata.st_size > MAX_SOURCE_FILE_BYTES:
-            raise AdaptationError(f"source file exceeds maximum size: {relative}")
-        total_bytes += metadata.st_size
-        if total_bytes > MAX_SOURCE_TREE_BYTES:
-            raise AdaptationError("source tree exceeds maximum size")
-        entries.append(SourceTreeEntry(path, relative, metadata))
-    return sorted(entries, key=lambda entry: entry.relative.as_posix())
+        relative = relative_dir / name
+        descriptor = open_tree_entry(source_descriptor, name, relative)
+        try:
+            metadata = os.fstat(descriptor)
+            budget.entries += 1
+            if stat.S_ISDIR(metadata.st_mode):
+                if depth >= MAX_SOURCE_DEPTH:
+                    raise AdaptationError("source tree is too deeply nested")
+                digest_entry(digest, b"directory", relative, metadata.st_mode, 0)
+                child_target = target_dir / name if target_dir is not None else None
+                if child_target is not None:
+                    child_target.mkdir(mode=0o700)
+                walk_tree(descriptor, relative, digest, budget, child_target, skipped_root_names, depth + 1)
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise AdaptationError(f"source contains an unsupported file: {relative}")
+
+            budget.files += 1
+            if budget.files > MAX_SOURCE_FILES:
+                raise AdaptationError("source contains too many files")
+            if metadata.st_size > MAX_SOURCE_FILE_BYTES:
+                raise AdaptationError(f"source file exceeds maximum size: {relative}")
+
+            output_descriptor = -1
+            if target_dir is not None:
+                output_descriptor = os.open(
+                    target_dir / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600
+                )
+            file_digest = hashlib.sha256()
+            file_bytes = 0
+            try:
+                while chunk := os.read(descriptor, COPY_CHUNK_BYTES):
+                    file_bytes += len(chunk)
+                    budget.bytes += len(chunk)
+                    if file_bytes > MAX_SOURCE_FILE_BYTES or budget.bytes > MAX_SOURCE_TREE_BYTES:
+                        raise AdaptationError("source tree exceeds maximum size while copying")
+                    file_digest.update(chunk)
+                    if output_descriptor >= 0:
+                        view = memoryview(chunk)
+                        while view:
+                            written = os.write(output_descriptor, view)
+                            view = view[written:]
+            finally:
+                if output_descriptor >= 0:
+                    os.close(output_descriptor)
+
+            if target_dir is not None:
+                (target_dir / name).chmod(0o600 | (stat.S_IMODE(metadata.st_mode) & 0o111))
+            digest_entry(digest, b"file", relative, metadata.st_mode, file_bytes, file_digest.digest())
+        finally:
+            os.close(descriptor)
 
 
-def source_tree_digest(source_dir: Path, entries: list[SourceTreeEntry] | None = None) -> str:
-    digest = hashlib.sha256()
-    digested_bytes = 0
-    for entry in entries if entries is not None else source_tree_entries(source_dir):
-        if stat.S_ISDIR(entry.metadata.st_mode):
-            digest.update(f"D:{entry.relative}\n".encode())
-            continue
-        digest.update(f"F:{entry.relative}\0".encode())
-        with entry.path.open("rb") as file:
-            digested_file_bytes = 0
-            for chunk in iter(lambda: file.read(COPY_CHUNK_BYTES), b""):
-                digested_file_bytes += len(chunk)
-                digested_bytes += len(chunk)
-                if digested_file_bytes > MAX_SOURCE_FILE_BYTES or digested_bytes > MAX_SOURCE_TREE_BYTES:
-                    raise AdaptationError("source tree exceeds maximum size while hashing")
-                digest.update(chunk)
-    return digest.hexdigest()
+def tree_digest(source_dir: Path, target_dir: Path | None = None, skip_marker: bool = False) -> str:
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(source_dir, flags)
+    except OSError as error:
+        raise AdaptationError(f"cannot safely open source directory: {source_dir}") from error
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise AdaptationError("source directory does not exist")
+        if target_dir is not None:
+            target_dir.mkdir(mode=0o700)
+        digest = hashlib.sha256()
+        walk_tree(
+            descriptor,
+            Path(),
+            digest,
+            TreeBudget(),
+            target_dir,
+            frozenset((MARKER_NAME,)) if skip_marker else frozenset(),
+        )
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def source_tree_digest(source_dir: Path, entries: object | None = None) -> str:
+    """Hash the bytes and modes actually read from a bounded, symlink-free tree."""
+    del entries
+    return tree_digest(source_dir)
 
 
 def read_entry_point(source: Path) -> str:
     """Read one QML entry point without allocating more than its fixed limit."""
-    if source.stat().st_size > MAX_ENTRY_POINT_BYTES:
-        raise AdaptationError("entry point exceeds maximum size")
-    with source.open("rb") as file:
-        content = file.read(MAX_ENTRY_POINT_BYTES + 1)
+    content = read_regular_file(source, MAX_ENTRY_POINT_BYTES, "entry point")
     if len(content) > MAX_ENTRY_POINT_BYTES:
         raise AdaptationError("entry point exceeds maximum size")
     try:
@@ -291,7 +393,7 @@ def choose_source(source_dir: Path, entry_point: str) -> Path:
         raise AdaptationError("entry point is outside its plugin directory")
     source = candidate
     if not has_standard_host(read_entry_point(source)):
-        sibling = (source_dir / "Panel.qml").resolve()
+        sibling = (candidate.parent / "Panel.qml").resolve()
         if sibling.is_file() and source_dir in sibling.parents:
             source = sibling
     return source
@@ -301,24 +403,9 @@ def has_standard_host(source: str) -> bool:
     return any(node.type_name == "KeyboardPanel" for node in object_nodes(tokens(source)))
 
 
-def copy_tree(source_dir: Path, target_dir: Path) -> None:
-    """Copy a second bounded snapshot instead of delegating to unbounded copytree."""
-    copied_bytes = 0
-    target_dir.mkdir()
-    for entry in source_tree_entries(source_dir):
-        target = target_dir / entry.relative
-        if stat.S_ISDIR(entry.metadata.st_mode):
-            target.mkdir()
-            continue
-        with entry.path.open("rb") as source, target.open("xb") as destination:
-            copied_file_bytes = 0
-            while chunk := source.read(COPY_CHUNK_BYTES):
-                copied_file_bytes += len(chunk)
-                copied_bytes += len(chunk)
-                if copied_file_bytes > MAX_SOURCE_FILE_BYTES or copied_bytes > MAX_SOURCE_TREE_BYTES:
-                    raise AdaptationError("source tree exceeds maximum size while copying")
-                destination.write(chunk)
-        target.chmod(stat.S_IMODE(entry.metadata.st_mode))
+def copy_tree(source_dir: Path, target_dir: Path) -> str:
+    """Copy and hash one descriptor-based snapshot of a plugin source tree."""
+    return tree_digest(source_dir, target_dir)
 
 
 def is_within(path: Path, parent: Path) -> bool:
@@ -349,83 +436,286 @@ def rebase_external_relative_imports(source: str, source_dir: Path, entry_source
     return RELATIVE_IMPORT.sub(replace, source)
 
 
+def read_regular_file(path: Path, maximum: int, label: str) -> bytes:
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise AdaptationError(f"cannot safely open {label}: {path}") from error
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise AdaptationError(f"{label} is not a regular file")
+        if metadata.st_size > maximum:
+            raise AdaptationError(f"{label} exceeds maximum size")
+        chunks: list[bytes] = []
+        remaining = maximum + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(COPY_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        content = b"".join(chunks)
+        if len(content) > maximum:
+            raise AdaptationError(f"{label} exceeds maximum size")
+        return content
+    finally:
+        os.close(descriptor)
+
+
 def safe_directory(path: Path) -> None:
-    if path.exists() and path.is_symlink():
-        raise AdaptationError(f"refusing a symlinked cache path: {path}")
-    path.mkdir(parents=True, exist_ok=True)
-    if not path.is_dir() or path.is_symlink():
+    if not path.is_absolute() or path != Path(os.path.abspath(path)):
+        raise AdaptationError(f"cache path must be absolute and normalized: {path}")
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.resolve() != path:
+        raise AdaptationError(f"refusing a cache path with symlinked ancestors: {path}")
+    metadata = path.lstat()
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
         raise AdaptationError(f"cache path is not a directory: {path}")
+    if metadata.st_uid != os.getuid():
+        raise AdaptationError(f"cache path is not owned by the current user: {path}")
+    path.chmod(0o700)
+
+    ancestor = path.parent
+    while True:
+        metadata = ancestor.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            raise AdaptationError(f"refusing a symlinked cache ancestor: {ancestor}")
+        if metadata.st_uid not in (0, os.getuid()):
+            raise AdaptationError(f"refusing an untrusted cache ancestor: {ancestor}")
+        writable_by_others = stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH)
+        if writable_by_others and not metadata.st_mode & stat.S_ISVTX:
+            raise AdaptationError(f"refusing an insecure cache ancestor: {ancestor}")
+        if ancestor == ancestor.parent:
+            break
+        ancestor = ancestor.parent
+
+
+@contextmanager
+def cache_lock(namespace_root: Path) -> Iterator[None]:
+    lock_path = namespace_root / ".lock"
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(lock_path, flags, 0o600)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise AdaptationError("cache lock is unsafe")
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def remove_tree_entry(parent_descriptor: int, name: str) -> None:
+    try:
+        metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(metadata.st_mode):
+        os.unlink(name, dir_fd=parent_descriptor)
+        return
+
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    try:
+        os.fchmod(descriptor, 0o700)
+        for child in os.listdir(descriptor):
+            remove_tree_entry(descriptor, child)
+    finally:
+        os.close(descriptor)
+    os.rmdir(name, dir_fd=parent_descriptor)
+
+
+def remove_tree(path: Path) -> None:
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    parent_descriptor = os.open(path.parent, flags)
+    try:
+        remove_tree_entry(parent_descriptor, path.name)
+    finally:
+        os.close(parent_descriptor)
+
+
+def seal_tree(path: Path) -> None:
+    for directory, _, files in os.walk(path, topdown=False, followlinks=False):
+        directory_path = Path(directory)
+        for name in files:
+            file_path = directory_path / name
+            metadata = file_path.lstat()
+            if not stat.S_ISREG(metadata.st_mode):
+                raise AdaptationError(f"generated artifact contains an unsafe file: {file_path}")
+            file_path.chmod(0o400 | (stat.S_IMODE(metadata.st_mode) & 0o111))
+        directory_path.chmod(0o700)
+
+
+def clean_stale_staging(staging_parent: Path) -> None:
+    cutoff = time.time() - STALE_STAGING_SECONDS
+    for child in staging_parent.iterdir():
+        try:
+            metadata = child.lstat()
+            if metadata.st_mtime >= cutoff:
+                continue
+            if stat.S_ISDIR(metadata.st_mode):
+                active_lock = child / ".active"
+                lock_descriptor = -1
+                try:
+                    flags = os.O_RDWR | os.O_CLOEXEC
+                    if hasattr(os, "O_NOFOLLOW"):
+                        flags |= os.O_NOFOLLOW
+                    lock_descriptor = os.open(active_lock, flags)
+                    fcntl.flock(lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except FileNotFoundError:
+                    pass
+                except BlockingIOError:
+                    continue
+                try:
+                    remove_tree(child)
+                finally:
+                    if lock_descriptor >= 0:
+                        os.close(lock_descriptor)
+            else:
+                remove_tree(child)
+        except OSError:
+            continue
+
+
+def prune_namespace(namespace_root: Path, current: Path) -> None:
+    artifacts: list[tuple[float, Path]] = []
+    for child in namespace_root.iterdir():
+        if child == current or child.name == ".lock":
+            continue
+        try:
+            metadata = child.lstat()
+        except OSError:
+            continue
+        if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
+            artifacts.append((metadata.st_mtime, child))
+        elif stat.S_ISLNK(metadata.st_mode):
+            remove_tree(child)
+    artifacts.sort(reverse=True)
+    for _, artifact in artifacts[MAX_CACHED_ARTIFACTS - 1 :]:
+        try:
+            remove_tree(artifact)
+        except OSError:
+            continue
 
 
 def completed_artifact(destination: Path, generated_source: Path, fingerprint: str) -> bool:
-    marker = destination / ".omarchy-side-panel-adapted"
-    if destination.is_symlink() or generated_source.is_symlink() or marker.is_symlink():
+    marker = destination / MARKER_NAME
+    try:
+        if destination.is_symlink() or not destination.is_dir() or not is_within(generated_source, destination):
+            return False
+        document = json.loads(read_regular_file(marker, MAX_MARKER_BYTES, "artifact marker").decode("utf-8"))
+        if not isinstance(document, dict):
+            return False
+        relative_source = generated_source.relative_to(destination).as_posix()
+        if set(document) != {"version", "fingerprint", "entryPoint", "artifactDigest"}:
+            return False
+        if document["version"] != ADAPTER_VERSION or document["fingerprint"] != fingerprint:
+            return False
+        if document["entryPoint"] != relative_source:
+            return False
+        if not re.fullmatch(r"[0-9a-f]{64}", str(document["artifactDigest"])):
+            return False
+        return tree_digest(destination, skip_marker=True) == document["artifactDigest"]
+    except (AdaptationError, KeyError, OSError, UnicodeError, ValueError, json.JSONDecodeError):
         return False
-    if not destination.is_dir() or not generated_source.is_file() or not marker.is_file():
-        return False
-    return marker.read_text(encoding="utf-8") == f"{ADAPTER_VERSION}\n{fingerprint}\n"
 
 
 def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, adapter_dir: Path) -> Path:
     source_dir = source_dir.resolve()
     adapter_dir = adapter_dir.resolve()
-    cache_root = Path(os.path.abspath(cache_root))
+    cache_root = Path(cache_root)
     if not source_dir.is_dir():
         raise AdaptationError("source directory does not exist")
     if not adapter_dir.is_dir():
         raise AdaptationError("adapter directory does not exist")
-    if not plugin_id or plugin_id in (".", "..") or "/" in plugin_id:
+    if not plugin_id or len(plugin_id) > 160 or plugin_id in (".", "..") or "/" in plugin_id:
         raise AdaptationError("plugin id is unsafe")
-    resolved_cache_root = cache_root.resolve()
-    if cache_root != resolved_cache_root:
-        raise AdaptationError("refusing a cache root with symlinked ancestors")
-    cache_root = resolved_cache_root
+    if any(ord(character) < 32 for character in plugin_id):
+        raise AdaptationError("plugin id is unsafe")
+    if not cache_root.is_absolute() or cache_root != Path(os.path.abspath(cache_root)):
+        raise AdaptationError("cache root must be an absolute normalized path")
     if is_within(cache_root, source_dir) or is_within(source_dir, cache_root):
         raise AdaptationError("cache root must not overlap the source plugin")
 
-    entry_source = choose_source(source_dir, entry_point)
-    source_entries = source_tree_entries(source_dir)
-    source_digest = source_tree_digest(source_dir, source_entries)
-    source = rebase_external_relative_imports(read_entry_point(entry_source), source_dir, entry_source)
-    transformed = transform_qml(source)
-    namespace = hashlib.sha256(plugin_id.encode("utf-8")).hexdigest()[:24]
-    fingerprint = hashlib.sha256((source_digest + "\0" + ADAPTER_VERSION).encode()).hexdigest()[:24]
-    destination = cache_root / namespace / fingerprint
-    generated_source = destination / entry_source.relative_to(source_dir)
     safe_directory(cache_root)
+    namespace = hashlib.sha256(plugin_id.encode("utf-8")).hexdigest()
     namespace_root = cache_root / namespace
     safe_directory(namespace_root)
-    if destination.exists() or destination.is_symlink():
-        if completed_artifact(destination, generated_source, fingerprint):
-            return generated_source
-        raise AdaptationError("existing cache destination is not a SidePanel artifact")
-
     staging_parent = cache_root / ".staging"
     safe_directory(staging_parent)
+    clean_stale_staging(staging_parent)
     staging = Path(tempfile.mkdtemp(prefix="adapter-", dir=staging_parent))
+    staging.chmod(0o700)
+    staging_lock = os.open(staging / ".active", os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+    fcntl.flock(staging_lock, fcntl.LOCK_EX)
     try:
         output = staging / "output"
         copy_tree(source_dir, output)
-        target = output / entry_source.relative_to(source_dir)
-        target.chmod(target.stat().st_mode | stat.S_IWUSR)
-        target.write_text(transformed, encoding="utf-8")
-        for helper in ("SidePanelHost.qml", "SidePanelDisabledIpc.qml", "SidePanelHiddenBarButton.qml"):
-            source_helper = adapter_dir / helper
-            if not source_helper.is_file():
-                raise AdaptationError(f"adapter helper is missing: {helper}")
-            shutil.copy2(source_helper, output / helper)
-        (output / ".omarchy-side-panel-adapted").write_text(
-            f"{ADAPTER_VERSION}\n{fingerprint}\n", encoding="utf-8"
-        )
+        entry_source = choose_source(output, entry_point)
+        entry_relative = entry_source.relative_to(output)
+        original_entry_source = source_dir / entry_relative
+        source = rebase_external_relative_imports(read_entry_point(entry_source), source_dir, original_entry_source)
+        transformed = transform_qml(source).encode("utf-8")
+        entry_source.chmod(0o600 | (entry_source.stat().st_mode & 0o111))
+        entry_source.write_bytes(transformed)
 
-        try:
+        for helper in HELPER_NAMES:
+            source_helper = adapter_dir / helper
+            helper_target = entry_source.parent / helper
+            if helper_target.exists() or helper_target.is_symlink():
+                raise AdaptationError(f"plugin source collides with adapter helper: {helper}")
+            helper_target.write_bytes(read_regular_file(source_helper, MAX_ENTRY_POINT_BYTES, f"adapter helper {helper}"))
+            helper_target.chmod(0o600)
+
+        seal_tree(output)
+        artifact_digest = tree_digest(output)
+        identity = "\0".join((ADAPTER_VERSION, str(source_dir), entry_relative.as_posix(), artifact_digest))
+        fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        destination = namespace_root / fingerprint
+        generated_source = destination / entry_relative
+        marker = {
+            "version": ADAPTER_VERSION,
+            "fingerprint": fingerprint,
+            "entryPoint": entry_relative.as_posix(),
+            "artifactDigest": artifact_digest,
+        }
+        output.chmod(0o700)
+        marker_path = output / MARKER_NAME
+        marker_path.write_text(json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n")
+        marker_path.chmod(0o400)
+
+        with cache_lock(namespace_root):
+            if destination.exists() or destination.is_symlink():
+                if completed_artifact(destination, generated_source, fingerprint):
+                    return generated_source
+                remove_tree(destination)
             os.rename(output, destination)
-        except FileExistsError:
-            pass
+            destination.chmod(0o700)
+            if not completed_artifact(destination, generated_source, fingerprint):
+                remove_tree(destination)
+                raise AdaptationError("adapter publication failed integrity verification")
+            prune_namespace(namespace_root, destination)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
-    if not completed_artifact(destination, generated_source, fingerprint):
-        raise AdaptationError("adapter publication failed")
+        os.close(staging_lock)
+        try:
+            remove_tree(staging)
+        except OSError:
+            pass
     return generated_source
 
 

@@ -51,8 +51,11 @@ Item {
     ? sidePanelPages[currentPage].items : []
   readonly property int sidePanelItemCount: countSidePanelItems()
   readonly property bool sidePanelItemLimitReached: sidePanelItemCount >= SidePanelModel.MAX_TOTAL_ITEMS
+  readonly property bool sidePanelPageItemLimitReached: pluginItems.length >= SidePanelModel.MAX_ITEMS_PER_PAGE
   property var adaptedUrls: ({})
   property string adaptingId: ""
+  property string adaptationTimedOutId: ""
+  property int adaptationRegistryRevision: -1
   property var adaptationErrors: ({})
   property var panelErrors: ({})
   property int panelEpoch: 0
@@ -65,11 +68,29 @@ Item {
   property int keyboardPluginIndex: -1
   property string hoveredPanelId: ""
   property var sidePanelState: ({})
+  property int stateRevision: 0
+  property int stateReadRevision: 0
+  property bool stateReadTimedOut: false
+  property string stateSaveError: ""
+  property string pendingStateText: ""
+  property string stateWritingText: ""
+  property bool stateWriteInProgress: false
+  property int stateSaveRetryCount: 0
+  property real configurationRevision: 0
+  property int transparentForegroundGeneration: 0
+  property int transparentForegroundRequestGeneration: -1
+  property bool transparentForegroundDirty: false
 
   readonly property int sidePanelWidth: Math.round(Style.space(480))
   readonly property int sidePanelHeight: Math.round(Style.space(420))
-  readonly property bool verticalEdge: edge === "left" || edge === "right"
-  readonly property bool reservesSpace: layoutMode === "reserve"
+  readonly property string effectiveEdge: {
+    var value = String(setting("edge", edge)).toLowerCase()
+    return ["left", "right", "top", "bottom"].indexOf(value) >= 0 ? value : edge
+  }
+  readonly property string effectiveLayoutMode: String(setting("layoutMode", layoutMode)).toLowerCase() === "reserve"
+    ? "reserve" : "overlay"
+  readonly property bool verticalEdge: effectiveEdge === "left" || effectiveEdge === "right"
+  readonly property bool reservesSpace: effectiveLayoutMode === "reserve"
   readonly property bool transparentBackground: reservesSpace && bar && bar.transparent === true
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
@@ -144,10 +165,10 @@ Item {
   // Edge so opening reads as a quick slide rather than a fade-in.
   property real panelRevealProgress: 0
   readonly property real panelRevealOffsetX: verticalEdge
-    ? (edge === "left" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
+    ? (effectiveEdge === "left" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
     : 0
   readonly property real panelRevealOffsetY: !verticalEdge
-    ? (edge === "top" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
+    ? (effectiveEdge === "top" ? -(1 - panelRevealProgress) * sidePanelExtent : (1 - panelRevealProgress) * sidePanelExtent)
     : 0
   readonly property color foreground: Color.popups.text
   readonly property color transparentTextForeground: Color.bar.text
@@ -162,13 +183,25 @@ Item {
     ? anchorWindow.screen
     : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
   readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
-  readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-side-panel"
-  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/gshulga.side-panel.json"
+  readonly property string cacheBase: absoluteXdgBase("XDG_CACHE_HOME", "/.cache")
+  readonly property string stateBase: absoluteXdgBase("XDG_STATE_HOME", "/.local/state")
+  property string cacheRoot: cacheBase === "" ? "" : cacheBase + "/omarchy-side-panel"
+  property string statePath: stateBase === "" ? "" : stateBase + "/omarchy/gshulga.side-panel.json"
+  readonly property int pluginRegistryRevision: bar && bar.shell && bar.shell.pluginRegistry
+    ? Number(bar.shell.pluginRegistry.registryRevision || 0) : 0
   readonly property var availablePlugins: discoverAvailablePlugins()
 
+  function absoluteXdgBase(environmentName, homeSuffix) {
+    var configured = String(Quickshell.env(environmentName) || "")
+    if (configured.charAt(0) === "/") return configured.replace(/\/+$/, "")
+    var home = String(Quickshell.env("HOME") || "")
+    return home.charAt(0) === "/" ? home.replace(/\/+$/, "") + homeSuffix : ""
+  }
+
   function setting(name, fallback) {
-    var value = sidePanelState && sidePanelState[name] !== undefined ? sidePanelState[name]
-      : (settings ? settings[name] : undefined)
+    var stateIsNewer = stateConfigurationRevision(sidePanelState) > settingsConfigurationRevision()
+    var source = stateIsNewer ? sidePanelState : settings
+    var value = source ? source[name] : undefined
     return value === undefined || value === null ? fallback : value
   }
 
@@ -182,19 +215,28 @@ Item {
   }
 
   function scheduleTransparentForegroundRefresh() {
+    transparentForegroundGeneration += 1
     if (!transparentBackground) {
       transparentForeground = transparentTextForeground
       return
     }
+    if (transparentForegroundProc.running) transparentForegroundDirty = true
     transparentForegroundTimer.restart()
   }
 
   function refreshTransparentForeground() {
-    if (!transparentBackground || transparentForegroundProc.running) return
+    if (!transparentBackground) return
+    if (transparentForegroundProc.running) {
+      transparentForegroundDirty = true
+      return
+    }
+    transparentForegroundDirty = false
+    transparentForegroundRequestGeneration = transparentForegroundGeneration
     // Match Bar's wallpaper-sampled contrast choice for the side panel's own edge.
     transparentForegroundProc.command = [
-      "omarchy-bar-text-color",
-      edge,
+      "/usr/bin/timeout", "--signal=TERM", "--kill-after=1s", "5s",
+      "/usr/share/omarchy/bin/omarchy-bar-text-color",
+      effectiveEdge,
       String(Math.max(1, Math.round(sidePanelExtent))),
       colorHex(transparentTextForeground),
       colorHex(transparentContrastForeground)
@@ -210,9 +252,24 @@ Item {
     return SidePanelModel.normalize(items, function(item) { return root.resolvedPluginId(item) })
   }
 
+  function settingsConfigurationRevision() {
+    return SidePanelModel.normalizedRevision(settings ? settings.sidePanelRevision : 0)
+  }
+
+  function stateConfigurationRevision(state) {
+    return SidePanelModel.normalizedRevision(state ? state.revision : 0)
+  }
+
+  function nextConfigurationRevision() {
+    configurationRevision = Math.max(configurationRevision + 1, Date.now())
+    return configurationRevision
+  }
+
   function pagesFromSettings() {
-    var source = sidePanelState && Array.isArray(sidePanelState.pages) && sidePanelState.pages.length > 0
-      ? sidePanelState : settings
+    var configured = settings && ((Array.isArray(settings.pages) && settings.pages.length > 0)
+      || Array.isArray(settings.plugins))
+    var savedStateIsNewer = stateConfigurationRevision(sidePanelState) > settingsConfigurationRevision()
+    var source = savedStateIsNewer || !configured ? sidePanelState : settings
     return SidePanelModel.pagesFromSettings(source, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
@@ -237,11 +294,16 @@ Item {
     deactivateActivePanels()
     sidePanelPages = nextPages
     currentPage = Math.max(0, Math.min(nextPages.length - 1, nextPage === undefined ? currentPage : nextPage))
-    persistSidePanelState()
+    var revision = nextConfigurationRevision()
+    persistSidePanelState(null, revision)
     var entry = SidePanelModel.persistedEntry(settings, nextPages)
-    settings = entry
-    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
-      bar.shell.updateEntryInline("gshulga.side-panel", entry)
+    entry.sidePanelRevision = revision
+    try {
+      if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+        bar.shell.updateEntryInline("gshulga.side-panel", entry)
+    } catch (error) {
+      console.warn("SidePanel: cannot persist pages:", error)
+    }
   }
 
   function persistItems(items) {
@@ -340,6 +402,7 @@ Item {
       if (panelUrl(item) === "") {
         if (canAdapt(item) && !adaptationFailed(item)) {
           warmupQueue = [id].concat(warmupQueue)
+          warmupTimer.stop()
           adaptPreferredPanels()
           return
         }
@@ -358,6 +421,7 @@ Item {
   }
 
   function addPage() {
+    if (sidePanelPages.length >= SidePanelModel.MAX_PAGES) return
     var nextPages = copyPages(sidePanelPages)
     nextPages.push({ title: "Page " + (nextPages.length + 1), items: [] })
     persistPages(nextPages, nextPages.length - 1)
@@ -517,31 +581,79 @@ Item {
     entry[name] = value
     var overrides = ({})
     overrides[name] = value
-    persistSidePanelState(overrides)
-    settings = entry
-    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
-      bar.shell.updateEntryInline("gshulga.side-panel", entry)
+    var revision = nextConfigurationRevision()
+    persistSidePanelState(overrides, revision)
+    entry.sidePanelRevision = revision
+    try {
+      if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+        bar.shell.updateEntryInline("gshulga.side-panel", entry)
+    } catch (error) {
+      console.warn("SidePanel: cannot persist setting " + name + ":", error)
+    }
   }
 
-  function persistSidePanelState(overrides) {
+  function persistSidePanelState(overrides, requestedConfigurationRevision) {
     var state = {
       version: 1,
       pages: copyPages(sidePanelPages),
       currentPage: currentPage
     }
-    var settingNames = ["edge", "edgeSize", "overlayCrossSize", "overlayAlignment", "layoutMode"]
-    for (var index = 0; index < settingNames.length; index++) {
-      var name = settingNames[index]
-      var value = overrides && overrides[name] !== undefined ? overrides[name] : setting(name, undefined)
-      if (name === "edgeSize" || name === "overlayCrossSize")
-        value = SidePanelModel.boundedEdgeSize(value, verticalEdge ? sidePanelWidth : sidePanelHeight)
-      if (value !== undefined && value !== null) state[name] = value
+    var revision = SidePanelModel.normalizedRevision(
+      requestedConfigurationRevision === undefined || requestedConfigurationRevision === null
+        ? configurationRevision : requestedConfigurationRevision
+    )
+    if (revision > 0) state.revision = revision
+    var requestedEdge = overrides && overrides.edge !== undefined ? overrides.edge : effectiveEdge
+    var requestedMode = overrides && overrides.layoutMode !== undefined ? overrides.layoutMode : effectiveLayoutMode
+    var requestedAlignment = overrides && overrides.overlayAlignment !== undefined
+      ? overrides.overlayAlignment : overlayAlignment
+    if (["left", "right", "top", "bottom"].indexOf(requestedEdge) >= 0) state.edge = requestedEdge
+    if (["overlay", "reserve"].indexOf(requestedMode) >= 0) state.layoutMode = requestedMode
+    if (["left", "center", "right", "top", "bottom"].indexOf(requestedAlignment) >= 0)
+      state.overlayAlignment = requestedAlignment
+    var requestedRevealEnabled = overrides && overrides.edgeRevealEnabled !== undefined
+      ? overrides.edgeRevealEnabled : setting("edgeRevealEnabled", true)
+    if (typeof requestedRevealEnabled === "boolean") state.edgeRevealEnabled = requestedRevealEnabled
+    var requestedRevealDelay = overrides && overrides.edgeRevealDelayMs !== undefined
+      ? overrides.edgeRevealDelayMs : setting("edgeRevealDelayMs", 250)
+    state.edgeRevealDelayMs = SidePanelModel.boundedInteger(requestedRevealDelay, 250, 0, 2000)
+    var requestedEdgeSize = overrides && overrides.edgeSize !== undefined
+      ? overrides.edgeSize : setting("edgeSize", 0)
+    requestedEdgeSize = SidePanelModel.normalizedExtent(requestedEdgeSize, SidePanelModel.MAX_EDGE_SIZE)
+    if (requestedEdgeSize > 0) state.edgeSize = requestedEdgeSize
+    var requestedCrossSize = overrides && overrides.overlayCrossSize !== undefined
+      ? overrides.overlayCrossSize : setting("overlayCrossSize", 0)
+    state.overlayCrossSize = SidePanelModel.normalizedExtent(requestedCrossSize, SidePanelModel.MAX_EDGE_SIZE)
+    var serialized = ""
+    try {
+      serialized = JSON.stringify(state, null, 2) + "\n"
+    } catch (error) {
+      console.warn("SidePanel: cannot serialize saved state:", error)
+      return
     }
+    if (SidePanelModel.utf8ByteLength(serialized) > SidePanelModel.MAX_STATE_BYTES) {
+      console.warn("SidePanel: refusing to save state larger than the size limit")
+      return
+    }
+    stateRevision += 1
     sidePanelState = state
-    sidePanelStateFile.setText(JSON.stringify(state, null, 2) + "\n")
+    if (statePath !== "") {
+      pendingStateText = serialized
+      stateSaveRetryCount = 0
+      if (!stateWriteInProgress) stateSaveTimer.restart()
+    }
   }
 
-  function loadSidePanelState(raw) {
+  function flushStateWrite() {
+    if (statePath === "" || stateWriteInProgress || pendingStateText === "") return
+    stateWritingText = pendingStateText
+    pendingStateText = ""
+    stateWriteInProgress = true
+    sidePanelStateFile.setText(stateWritingText)
+  }
+
+  function loadSidePanelState(raw, requestedRevision) {
+    if (requestedRevision !== stateRevision) return
     var state = SidePanelModel.parseState(raw, defaultPluginItems(), function(item) {
       return root.resolvedPluginId(item)
     })
@@ -549,17 +661,51 @@ Item {
       console.warn("SidePanel: cannot load saved state")
       return
     }
+    var savedRevision = stateConfigurationRevision(state)
+    var configuredRevision = settingsConfigurationRevision()
+    var recoverSavedState = savedRevision > configuredRevision
+    var configuredPages = settings && ((Array.isArray(settings.pages) && settings.pages.length > 0)
+      || Array.isArray(settings.plugins))
+    var nextPages = recoverSavedState || !configuredPages ? state.pages : SidePanelModel.pagesFromSettings(
+      settings, defaultPluginItems(), function(item) { return root.resolvedPluginId(item) }
+    )
     deactivateActivePanels("state-load")
     resetPanelWarmup()
     currentPluginList = null
     sidePanelState = state
-    sidePanelPages = state.pages
-    currentPage = state.currentPage
+    configurationRevision = Math.max(configurationRevision, savedRevision, configuredRevision)
+    sidePanelPages = nextPages
+    currentPage = Math.max(0, Math.min(nextPages.length - 1, state.currentPage))
+    if (opened) {
+      enqueueAllPanelWarmups()
+      adaptPreferredPanels()
+    }
+    if (recoverSavedState) repairShellSettingsFromState(state)
+  }
+
+  function repairShellSettingsFromState(state) {
+    var entry = SidePanelModel.persistedEntry(settings, state.pages)
+    var names = [
+      "edge", "edgeSize", "overlayCrossSize", "overlayAlignment", "layoutMode",
+      "edgeRevealEnabled", "edgeRevealDelayMs"
+    ]
+    for (var index = 0; index < names.length; index++)
+      if (state[names[index]] !== undefined) entry[names[index]] = state[names[index]]
+    entry.sidePanelRevision = stateConfigurationRevision(state)
+    try {
+      if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+        bar.shell.updateEntryInline("gshulga.side-panel", entry)
+    } catch (error) {
+      console.warn("SidePanel: cannot recover newer saved state into shell settings:", error)
+    }
   }
 
   function loadSavedSidePanelState() {
+    if (statePath === "" || stateReader.running) return
+    stateReadRevision = stateRevision
+    stateReadTimedOut = false
     stateReader.command = [
-      "python3", pluginDir + "/bin/omarchy-side-panel-read-state",
+      "/usr/bin/python3", "-I", pluginDir + "/bin/omarchy-side-panel-read-state",
       statePath, String(SidePanelModel.MAX_STATE_BYTES)
     ]
     stateReader.running = true
@@ -597,7 +743,7 @@ Item {
   function updateSidePanelResize(position) {
     if (!resizingSidePanel) return
     var delta = position - sidePanelResizeStart
-    if (sidePanelResizeAxis === "edge" && (edge === "right" || edge === "bottom")) delta = -delta
+    if (sidePanelResizeAxis === "edge" && (effectiveEdge === "right" || effectiveEdge === "bottom")) delta = -delta
     if (sidePanelResizeAxis === "cross"
         && ((verticalEdge && overlayAlignment === "bottom")
           || (!verticalEdge && overlayAlignment === "right"))) delta = -delta
@@ -696,8 +842,8 @@ Item {
   function updateResize(position) {
     if (resizingId === "") return
     var adjustedPosition = position
-    if ((resizingAxis === "width" && verticalEdge && edge === "right")
-        || (resizingAxis === "height" && !verticalEdge && edge === "bottom"))
+    if ((resizingAxis === "width" && verticalEdge && effectiveEdge === "right")
+        || (resizingAxis === "height" && !verticalEdge && effectiveEdge === "bottom"))
       adjustedPosition = resizeStartPosition - (position - resizeStartPosition)
     resizePreviewExtent = SidePanelModel.resizeHeight(resizeStartExtent, resizeStartPosition, adjustedPosition, 5, 5)
   }
@@ -806,9 +952,11 @@ Item {
 
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
-    if (id === "" || hasPlugin(id) || sidePanelItemLimitReached || id === "gshulga.side-panel") return
+    if (id === "" || hasPlugin(id) || sidePanelItemLimitReached || sidePanelPageItemLimitReached
+        || id === "gshulga.side-panel") return
     var manifest = pluginFor(id)
     if (!manifest) return
+    if (!enablePluginForSidePanel(id, manifest)) return
     var next = copyItems(pluginItems)
     next.push({
       id: id,
@@ -816,7 +964,6 @@ Item {
       icon: ""
     })
     persistItems(next)
-    enablePluginForSidePanel(id, manifest)
     catalogOpen = false
     setExpanded(id)
     enqueuePageWarmup(currentPage, true)
@@ -824,17 +971,24 @@ Item {
   }
 
   function enablePluginForSidePanel(id, manifest) {
-    if (pluginEnabled({ id: id }) || !bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
-    bar.shell.mutateShellConfig(function(config) {
-      var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
-      config.disabledPlugins = disabled.filter(function(entry) { return String(entry) !== id })
-      if (config.disabledPlugins.length === 0) delete config.disabledPlugins
-      if (manifest.__isFirstParty) return
-      if (!Array.isArray(config.plugins)) config.plugins = []
-      for (var index = 0; index < config.plugins.length; index++)
-        if (config.plugins[index] && String(config.plugins[index].id) === id) return
-      config.plugins.push({ id: id })
-    })
+    if (pluginEnabled({ id: id })) return true
+    if (!bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return false
+    try {
+      bar.shell.mutateShellConfig(function(config) {
+        var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
+        config.disabledPlugins = disabled.filter(function(entry) { return String(entry) !== id })
+        if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+        if (manifest.__isFirstParty) return
+        if (!Array.isArray(config.plugins)) config.plugins = []
+        for (var index = 0; index < config.plugins.length; index++)
+          if (config.plugins[index] && String(config.plugins[index].id) === id) return
+        config.plugins.push({ id: id })
+      })
+      return true
+    } catch (error) {
+      console.warn("SidePanel: cannot enable " + id + ":", error)
+      return false
+    }
   }
 
   function pluginFor(id) {
@@ -870,6 +1024,7 @@ Item {
   }
 
   function discoverAvailablePlugins() {
+    var revision = pluginRegistryRevision
     if (!bar || !bar.shell || !bar.shell.pluginRegistry) return []
     var plugins = bar.shell.pluginRegistry.installedPlugins || ({})
     var entries = []
@@ -901,7 +1056,7 @@ Item {
   }
 
   function adaptedUrl(item) {
-    if (!item) return ""
+    if (!item || !pluginEnabled(item) || !pluginFor(item.id)) return ""
     return String(adaptedUrls[resolvedPluginId(item)] || "")
   }
 
@@ -938,19 +1093,20 @@ Item {
 
   function canAdapt(item) {
     var manifest = item ? pluginFor(item.id) : null
-    return !!(pluginEnabled(item) && manifest && manifest.entryPoints
+    return !!(cacheRoot !== "" && pluginEnabled(item) && manifest && manifest.entryPoints
       && manifest.entryPoints.barWidget && manifest.__sourceDir)
   }
 
   function adaptStandardPanel(item) {
-    if (!item || !canAdapt(item) || adaptingId !== "") return
+    if (!item || !canAdapt(item) || adaptingId !== "" || adapter.running) return
     var id = resolvedPluginId(item)
     var manifest = pluginFor(item.id)
     adaptingId = id
+    adaptationTimedOutId = ""
+    adaptationRegistryRevision = pluginRegistryRevision
     clearAdaptationError(id)
     adapter.command = [
-      "bash",
-      pluginDir + "bin/omarchy-side-panel-adapt",
+      "/usr/bin/python3", "-I", pluginDir + "/lib/omarchy_side_panel_adapter.py", "--",
       String(manifest.__sourceDir),
       String(manifest.entryPoints.barWidget),
       cacheRoot,
@@ -958,10 +1114,11 @@ Item {
       pluginDir
     ]
     adapter.running = true
+    adapterTimeout.restart()
   }
 
   function adaptPreferredPanels() {
-    if (!opened || adaptingId !== "") return
+    if (!opened || adaptingId !== "" || adapter.running) return
     for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++) {
       var items = sidePanelPages[pageIndex].items || []
       for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
@@ -994,6 +1151,35 @@ Item {
     adaptationErrors = next
   }
 
+  function adapterUrlIsSafe(url) {
+    if (cacheRoot === "" || url.indexOf("\n") >= 0 || url.indexOf("\r") >= 0
+        || url.indexOf("file://") !== 0) return false
+    try {
+      var path = decodeURIComponent(url.slice("file://".length))
+      return path.indexOf(cacheRoot + "/") === 0 && path.indexOf("\0") < 0
+        && path.indexOf("/../") < 0 && !path.endsWith("/..")
+    } catch (error) {
+      return false
+    }
+  }
+
+  function resumePanelPreparation() {
+    if (!opened) return
+    advancePanelWarmup()
+    adaptPreferredPanels()
+    if (warmupQueue.length > 0 && adaptingId === "") warmupTimer.restart()
+  }
+
+  function handlePluginRegistryChange() {
+    deactivateActivePanels("plugin-registry-change")
+    resetPanelWarmup()
+    adaptedUrls = ({})
+    adaptationErrors = ({})
+    panelErrors = ({})
+    panelEpoch += 1
+    if (opened) enqueueAllPanelWarmups()
+  }
+
   function activateItem(item) {
     if (!item) return
     if (panelLoadFailed(item)) {
@@ -1008,31 +1194,69 @@ Item {
   function injectPanel(page, item) {
     if (!page) return
     var id = root.resolvedPluginId(item)
+    var service = null
+    try {
+      service = root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
+        ? root.bar.shell.serviceFor(id) : null
+    } catch (error) {
+      console.warn("SidePanel: cannot resolve service for " + id + ":", error)
+    }
     var context = {
       sidePanel: root,
       sidePanelItem: item || ({}),
       bar: root.bar,
       pluginId: id,
       settings: root.nativeSettings(id),
-      service: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
-        ? root.bar.shell.serviceFor(id) : null
+      service: service
     }
-    if (typeof page.initializeSidePanel === "function") {
-      page.initializeSidePanel(context)
-    } else {
-      assignPanelProperty(page, "sidePanel", context.sidePanel)
-      assignPanelProperty(page, "sidePanelHost", context.sidePanel)
-      assignPanelProperty(page, "sidePanelItem", context.sidePanelItem)
-      assignPanelProperty(page, "bar", context.bar)
-      assignPanelProperty(page, "settings", context.settings)
-      assignPanelProperty(page, "pluginId", context.pluginId)
-      assignPanelProperty(page, "service", context.service)
+    try {
+      if (typeof page.initializeSidePanel === "function") {
+        page.initializeSidePanel(context)
+      } else {
+        assignPanelProperty(page, "sidePanel", context.sidePanel)
+        assignPanelProperty(page, "sidePanelHost", context.sidePanel)
+        assignPanelProperty(page, "sidePanelItem", context.sidePanelItem)
+        assignPanelProperty(page, "bar", context.bar)
+        assignPanelProperty(page, "settings", context.settings)
+        assignPanelProperty(page, "pluginId", context.pluginId)
+        assignPanelProperty(page, "service", context.service)
+      }
+    } catch (error) {
+      setPanelError(item, "The embedded page failed during initialization.")
+      console.warn("SidePanel: plugin " + id + " initialization failed:", error)
+      return
     }
     var nextPanels = activePanels.slice()
     if (nextPanels.indexOf(page) < 0) nextPanels.push(page)
     activePanels = nextPanels
-    if (typeof page.sidePanelActivate === "function" && opened) page.sidePanelActivate(context)
-    else if (typeof page.open === "function" && opened) page.open()
+    var activationFailed = false
+    if (opened && typeof page.sidePanelActivate === "function"
+        && !invokePanelMethod(page, "sidePanelActivate", [context], id))
+      activationFailed = true
+    else if (opened && typeof page.sidePanelActivate !== "function" && typeof page.open === "function"
+        && !invokePanelMethod(page, "open", [], id))
+      activationFailed = true
+    if (activationFailed) {
+      removeActivePanel(page)
+      setPanelError(item, "The embedded page failed while opening.")
+    }
+  }
+
+  function removeActivePanel(page) {
+    var nextPanels = []
+    for (var index = 0; index < activePanels.length; index++)
+      if (activePanels[index] && activePanels[index] !== page) nextPanels.push(activePanels[index])
+    activePanels = nextPanels
+  }
+
+  function invokePanelMethod(page, name, args, id) {
+    try {
+      page[name].apply(page, args || [])
+      return true
+    } catch (error) {
+      console.warn("SidePanel: plugin " + String(id || "") + " " + name + " failed:", error)
+      return false
+    }
   }
 
   function assignPanelProperty(page, name, value) {
@@ -1045,9 +1269,14 @@ Item {
   }
 
   function nativeSettings(id) {
-    if (!bar || typeof bar.moduleWidgets !== "function") return ({})
-    var widgets = bar.moduleWidgets(id)
-    return widgets.length > 0 && widgets[0] && widgets[0].settings ? widgets[0].settings : ({})
+    try {
+      if (!bar || typeof bar.moduleWidgets !== "function") return ({})
+      var widgets = bar.moduleWidgets(id)
+      return widgets.length > 0 && widgets[0] && widgets[0].settings ? widgets[0].settings : ({})
+    } catch (error) {
+      console.warn("SidePanel: cannot resolve settings for " + id + ":", error)
+      return ({})
+    }
   }
 
   function deactivateActivePanels(reason) {
@@ -1055,14 +1284,23 @@ Item {
     activePanels = []
     var previousSuppression = suppressPanelClose
     suppressPanelClose = true
-    for (var i = 0; i < panels.length; i++) {
-      var panel = panels[i]
-      if (!panel) continue
-      if ("sidePanelHost" in panel && typeof panel.close === "function") panel.close()
-      else if (typeof panel.sidePanelDeactivate === "function") panel.sidePanelDeactivate(reason || "sidePanel")
-      else if (typeof panel.close === "function") panel.close()
+    try {
+      for (var i = 0; i < panels.length; i++) {
+        var panel = panels[i]
+        if (!panel) continue
+        try {
+          if ("sidePanelHost" in panel && typeof panel.close === "function")
+            invokePanelMethod(panel, "close", [], "")
+          else if (typeof panel.sidePanelDeactivate === "function")
+            invokePanelMethod(panel, "sidePanelDeactivate", [reason || "sidePanel"], "")
+          else if (typeof panel.close === "function") invokePanelMethod(panel, "close", [], "")
+        } catch (error) {
+          console.warn("SidePanel: cannot inspect plugin during deactivation:", error)
+        }
+      }
+    } finally {
+      suppressPanelClose = previousSuppression
     }
-    suppressPanelClose = previousSuppression
   }
 
   function panelClosed(page) {
@@ -1113,22 +1351,25 @@ Item {
     })
   }
   function close() {
-    if (closing || !opened) return
+    if (closing || suppressPanelClose || !opened) return
     closing = true
-    deactivateActivePanels("sidePanel-close")
-    opened = false
-    panelRevealProgress = 0
-    pinned = false
-    catalogOpen = false
-    settingsOpen = false
-    shortcutsOpen = false
-    editing = false
-    expandedId = ""
-    renamingPage = false
-    hoveredPanelId = ""
-    cancelResize()
-    cancelDrag()
-    closing = false
+    try {
+      deactivateActivePanels("sidePanel-close")
+    } finally {
+      opened = false
+      panelRevealProgress = 0
+      pinned = false
+      catalogOpen = false
+      settingsOpen = false
+      shortcutsOpen = false
+      editing = false
+      expandedId = ""
+      renamingPage = false
+      hoveredPanelId = ""
+      cancelResize()
+      cancelDrag()
+      closing = false
+    }
   }
   function toggle() { opened ? close() : open() }
 
@@ -1148,11 +1389,17 @@ Item {
       setPanelError(item, "Enable this plugin in Omarchy before opening its native panel.")
       return
     }
-    if (bar.shell.summon(String(resolvedPluginId(item)))) close()
-    else setPanelError(item, "This plugin has no native panel that Omarchy can open.")
+    try {
+      if (typeof bar.shell.summon === "function" && bar.shell.summon(String(resolvedPluginId(item)))) close()
+      else setPanelError(item, "This plugin has no native panel that Omarchy can open.")
+    } catch (error) {
+      setPanelError(item, "The plugin's native panel could not be opened.")
+      console.warn("SidePanel: native fallback failed:", error)
+    }
   }
 
   onSettingsChanged: {
+    configurationRevision = Math.max(configurationRevision, settingsConfigurationRevision())
     cancelEdgeReveal()
     deactivateActivePanels("settings-change")
     resetPanelWarmup()
@@ -1181,7 +1428,7 @@ Item {
   onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentContrastForegroundChanged: scheduleTransparentForegroundRefresh()
-  onEdgeChanged: {
+  onEffectiveEdgeChanged: {
     cancelEdgeReveal()
     scheduleTransparentForegroundRefresh()
   }
@@ -1199,25 +1446,83 @@ Item {
     atomicWrites: true
     preload: false
     printErrors: false
+    onSaved: {
+      root.stateWriteInProgress = false
+      root.stateWritingText = ""
+      root.stateSaveRetryCount = 0
+      root.stateSaveError = ""
+      if (root.pendingStateText !== "") stateSaveTimer.restart()
+    }
+    onSaveFailed: function(error) {
+      root.stateWriteInProgress = false
+      if (root.pendingStateText === "") root.pendingStateText = root.stateWritingText
+      root.stateWritingText = ""
+      root.stateSaveError = String(error)
+      console.warn("SidePanel: cannot save state: " + error + " path=" + root.statePath)
+      if (root.pendingStateText !== "" && root.stateSaveRetryCount < 2) {
+        root.stateSaveRetryCount += 1
+        stateSaveTimer.restart()
+      }
+    }
+  }
+
+  Timer {
+    id: stateSaveTimer
+    interval: root.stateSaveRetryCount > 0 ? 1000 : 100
+    repeat: false
+    onTriggered: root.flushStateWrite()
   }
 
   Process {
     id: stateReader
+    clearEnvironment: true
     stdout: StdioCollector {
       id: stateReaderOutput
       waitForEnd: true
     }
+    onStarted: stateReaderTimeout.restart()
     onExited: function(exitCode) {
+      stateReaderTimeout.stop()
+      stateReaderKillTimer.stop()
+      if (root.stateReadTimedOut) {
+        root.stateReadTimedOut = false
+        console.warn("SidePanel: state reader timed out; leaving saved state unchanged")
+        return
+      }
       if (exitCode === 0) {
-        root.loadSidePanelState(String(stateReaderOutput.text || ""))
+        root.loadSidePanelState(String(stateReaderOutput.text || ""), root.stateReadRevision)
+      } else if (exitCode === 1) {
+        if (root.stateReadRevision === root.stateRevision && root.sidePanelPages.length > 0)
+          root.persistSidePanelState()
       } else if (exitCode === 2) {
         console.warn("SidePanel: saved state exceeds the size limit")
       } else if (exitCode === 3) {
         console.warn("SidePanel: refusing unsafe saved state file")
-      } else if (root.sidePanelPages.length > 0) {
-        root.persistSidePanelState()
+      } else if (exitCode === 4) {
+        console.warn("SidePanel: saved state could not be read; leaving it unchanged")
+      } else {
+        console.warn("SidePanel: state reader failed with exit code " + exitCode)
       }
     }
+  }
+
+  Timer {
+    id: stateReaderTimeout
+    interval: 3000
+    repeat: false
+    onTriggered: {
+      if (!stateReader.running) return
+      root.stateReadTimedOut = true
+      stateReader.running = false
+      stateReaderKillTimer.restart()
+    }
+  }
+
+  Timer {
+    id: stateReaderKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (stateReader.running) stateReader.signal(9)
   }
 
   Timer {
@@ -1245,16 +1550,49 @@ Item {
 
   Process {
     id: transparentForegroundProc
+    environment: ({
+      BASH_ENV: null,
+      ENV: null,
+      CDPATH: null,
+      PATH: "/usr/share/omarchy/bin:/usr/local/bin:/usr/bin"
+    })
     stdout: SplitParser {
       onRead: function(line) {
         var value = String(line || "").trim()
-        if (/^#[0-9A-Fa-f]{6}$/.test(value)) root.transparentForeground = value
+        if (root.transparentForegroundRequestGeneration === root.transparentForegroundGeneration
+            && /^#[0-9A-Fa-f]{6}$/.test(value)) root.transparentForeground = value
       }
+    }
+    onStarted: transparentForegroundTimeout.restart()
+    onExited: {
+      transparentForegroundTimeout.stop()
+      transparentForegroundKillTimer.stop()
+      if (root.transparentForegroundDirty
+          || root.transparentForegroundRequestGeneration !== root.transparentForegroundGeneration)
+        transparentForegroundTimer.restart()
     }
   }
 
+  Timer {
+    id: transparentForegroundTimeout
+    interval: 7000
+    repeat: false
+    onTriggered: {
+      if (!transparentForegroundProc.running) return
+      transparentForegroundProc.running = false
+      transparentForegroundKillTimer.restart()
+    }
+  }
+
+  Timer {
+    id: transparentForegroundKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (transparentForegroundProc.running) transparentForegroundProc.signal(9)
+  }
+
   FileView {
-    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/current"
+    path: root.stateBase === "" ? "" : root.stateBase + "/omarchy/current"
     watchChanges: true
     printErrors: false
     onFileChanged: root.scheduleTransparentForegroundRefresh()
@@ -1269,7 +1607,9 @@ Item {
       armFocusDismissal()
       currentPage = 0
       resetPanelWarmup()
+      adaptedUrls = ({})
       adaptationErrors = ({})
+      panelErrors = ({})
       enqueueAllPanelWarmups()
       adaptPreferredPanels()
     } else {
@@ -1293,6 +1633,12 @@ Item {
     }
   }
 
+  Connections {
+    target: root.bar && root.bar.shell ? root.bar.shell.pluginRegistry : null
+    function onPluginsChanged() { root.handlePluginRegistryChange() }
+    function onLocalPluginChanged(pluginId) { root.handlePluginRegistryChange() }
+  }
+
   Timer {
     id: focusDismissalTimer
     interval: 100
@@ -1308,6 +1654,7 @@ Item {
 
   Process {
     id: adapter
+    clearEnvironment: true
     stdout: StdioCollector {
       id: adapterOutput
       waitForEnd: true
@@ -1317,25 +1664,69 @@ Item {
       waitForEnd: true
     }
     onExited: function(exitCode) {
+      adapterTimeout.stop()
+      adapterKillTimer.stop()
+      if (root.adaptationTimedOutId !== "") {
+        root.adaptationTimedOutId = ""
+        Qt.callLater(root.resumePanelPreparation)
+        return
+      }
       var id = root.adaptingId
       root.adaptingId = ""
+      if (id === "") return
+      if (root.adaptationRegistryRevision !== root.pluginRegistryRevision) {
+        Qt.callLater(root.resumePanelPreparation)
+        return
+      }
       if (exitCode !== 0) {
         root.setAdaptationError(id, String(adapterErrors.text || "This plugin does not expose a standard Omarchy panel.").trim())
-        root.adaptPreferredPanels()
+        Qt.callLater(root.resumePanelPreparation)
         return
       }
       var url = String(adapterOutput.text || "").trim()
-      if (url === "") {
-        root.setAdaptationError(id, "The adapter produced no embedded page.")
-        root.adaptPreferredPanels()
+      var item = root.itemForPanelId(id)
+      if (!root.opened || !item || !root.canAdapt(item)) {
+        Qt.callLater(root.resumePanelPreparation)
+        return
+      }
+      if (!root.adapterUrlIsSafe(url)) {
+        root.setAdaptationError(id, "The adapter produced an unsafe embedded-page URL.")
+        Qt.callLater(root.resumePanelPreparation)
         return
       }
       var next = ({})
       for (var key in root.adaptedUrls) next[key] = root.adaptedUrls[key]
       next[id] = url
       root.adaptedUrls = next
-      root.adaptPreferredPanels()
+      Qt.callLater(root.resumePanelPreparation)
     }
+  }
+
+  Timer {
+    id: adapterTimeout
+    interval: 15000
+    repeat: false
+    onTriggered: {
+      if (root.adaptingId === "") return
+      var id = root.adaptingId
+      root.adaptingId = ""
+      root.adaptationTimedOutId = id
+      root.setAdaptationError(id, "Preparing this embedded panel timed out.")
+      if (adapter.running) {
+        adapter.running = false
+        adapterKillTimer.restart()
+      } else {
+        root.adaptationTimedOutId = ""
+        root.resumePanelPreparation()
+      }
+    }
+  }
+
+  Timer {
+    id: adapterKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (adapter.running) adapter.signal(9)
   }
 
   PanelWindow {
@@ -1354,8 +1745,8 @@ Item {
 
     Item {
       id: edgeRevealArea
-      x: root.edge === "right" ? parent.width - width : 0
-      y: root.edge === "bottom" ? parent.height - height : 0
+      x: root.effectiveEdge === "right" ? parent.width - width : 0
+      y: root.effectiveEdge === "bottom" ? parent.height - height : 0
       width: root.verticalEdge ? 2 : parent.width
       height: root.verticalEdge ? parent.height : 2
 
@@ -1388,9 +1779,9 @@ Item {
       height: outsideClickSurface.height
       Region {
         intersection: Intersection.Subtract
-        x: root.verticalEdge && root.edge === "right"
+        x: root.verticalEdge && root.effectiveEdge === "right"
           ? outsideClickSurface.width - Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.width) : 0
-        y: !root.verticalEdge && root.edge === "bottom"
+        y: !root.verticalEdge && root.effectiveEdge === "bottom"
           ? outsideClickSurface.height - Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.height) : 0
         width: root.verticalEdge
           ? Math.min(root.sidePanelExtent + root.sidePanelResizeHitSlop, outsideClickSurface.width)
@@ -1457,17 +1848,31 @@ Item {
     }
 
     anchors {
-      left: !root.reservesSpace || root.edge === "left" || !root.verticalEdge
-      right: !root.reservesSpace || root.edge === "right" || !root.verticalEdge
-      top: !root.reservesSpace || root.verticalEdge || root.edge === "top"
-      bottom: !root.reservesSpace || root.verticalEdge || root.edge === "bottom"
+      left: !root.reservesSpace || root.effectiveEdge === "left" || !root.verticalEdge
+      right: !root.reservesSpace || root.effectiveEdge === "right" || !root.verticalEdge
+      top: !root.reservesSpace || root.verticalEdge || root.effectiveEdge === "top"
+      bottom: !root.reservesSpace || root.verticalEdge || root.effectiveEdge === "bottom"
     }
 
-    // Transparent layer surfaces need an explicit input region; otherwise the
-    // compositor routes clicks outside SidePanel directly to the app beneath it.
-    mask: Region {
-      width: surface.width
-      height: surface.height
+    // Unpinned overlay mode captures outside clicks. A pinned Side Panel must
+    // only own its visible geometry so the rest of the workspace stays usable.
+    mask: Region { item: surfaceInputRegion }
+
+    Item {
+      id: surfaceInputRegion
+      objectName: "surfaceInputRegion"
+      readonly property real panelLeft: sidePanelBody.x + root.panelRevealOffsetX
+      readonly property real panelTop: sidePanelBody.y + root.panelRevealOffsetY
+      readonly property real panelRight: panelLeft + sidePanelBody.width
+      readonly property real panelBottom: panelTop + sidePanelBody.height
+      x: root.pinned
+        ? Math.max(0, panelLeft - root.sidePanelResizeHitSlop) : 0
+      y: root.pinned
+        ? Math.max(0, panelTop - root.sidePanelResizeHitSlop) : 0
+      width: root.pinned
+        ? Math.max(0, Math.min(surface.width, panelRight + root.sidePanelResizeHitSlop) - x) : surface.width
+      height: root.pinned
+        ? Math.max(0, Math.min(surface.height, panelBottom + root.sidePanelResizeHitSlop) - y) : surface.height
     }
 
     implicitWidth: root.verticalEdge
@@ -1584,8 +1989,8 @@ Item {
       }
     }
     Shortcut { sequence: "Alt+X"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeCurrentPage() }
-    Shortcut { sequence: "Alt+C"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.addPage() }
-    Shortcut { sequence: "Alt++"; enabled: root.opened && root.editing && !root.sidePanelItemLimitReached; context: Qt.WindowShortcut; onActivated: root.catalogOpen = true }
+    Shortcut { sequence: "Alt+C"; enabled: root.opened && root.editing && root.sidePanelPages.length < SidePanelModel.MAX_PAGES; context: Qt.WindowShortcut; onActivated: root.addPage() }
+    Shortcut { sequence: "Alt++"; enabled: root.opened && root.editing && !root.sidePanelItemLimitReached && !root.sidePanelPageItemLimitReached; context: Qt.WindowShortcut; onActivated: root.catalogOpen = true }
     Shortcut { sequence: "Alt+-"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.removeFocusedPlugin() }
     Shortcut { sequence: "Alt+Space"; enabled: root.opened && root.editing; context: Qt.WindowShortcut; onActivated: root.toggleFocusedPlugin() }
 
@@ -1611,12 +2016,12 @@ Item {
       id: sidePanelBody
       z: 1
       x: root.verticalEdge
-        ? (root.edge === "left" ? root.sidePanelInsetLeft
+        ? (root.effectiveEdge === "left" ? root.sidePanelInsetLeft
           : surface.width - root.sidePanelInsetRight - width)
         : root.sidePanelInsetLeft + root.overlayCrossOffset(root.sidePanelAvailableWidth)
       y: root.verticalEdge
         ? root.sidePanelInsetTop + root.overlayCrossOffset(root.sidePanelAvailableHeight)
-        : (root.edge === "top" ? root.sidePanelInsetTop
+        : (root.effectiveEdge === "top" ? root.sidePanelInsetTop
           : surface.height - root.sidePanelInsetBottom - height)
       width: root.verticalEdge
         ? Math.min(root.sidePanelExtent, root.sidePanelAvailableWidth)
@@ -1907,7 +2312,7 @@ Item {
               height: Math.round(Style.space(28))
               radius: height / 2
               clip: true
-              opacity: root.sidePanelItemLimitReached ? 0.5 : 1
+              opacity: root.sidePanelItemLimitReached || root.sidePanelPageItemLimitReached ? 0.5 : 1
               color: addHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                 : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
@@ -1940,6 +2345,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                enabled: !root.sidePanelItemLimitReached && !root.sidePanelPageItemLimitReached
                 onClicked: root.catalogOpen = true
               }
             }
@@ -2105,7 +2511,8 @@ Item {
               z: root.draggedId === pluginId ? 3 : 1
 
               function focusPanel() {
-                if (pageLoader.item && typeof pageLoader.item.sidePanelFocus === "function") pageLoader.item.sidePanelFocus()
+                if (pageLoader.item && typeof pageLoader.item.sidePanelFocus === "function")
+                  root.invokePanelMethod(pageLoader.item, "sidePanelFocus", [], pluginId)
                 else forceActiveFocus()
               }
 
@@ -2285,6 +2692,8 @@ Item {
                     anchors.margins: Style.space(10)
                     asynchronous: true
                     active: root.opened
+                      && !root.panelLoadFailed(pluginRow.plugin)
+                      && (!root.editing || pluginRow.expanded)
                       && root.warmedPanelIds.indexOf(root.resolvedPluginId(pluginRow.plugin)) >= 0
                       && root.panelUrl(pluginRow.plugin) !== ""
                     source: root.panelSource(pluginRow.plugin)
@@ -2321,6 +2730,37 @@ Item {
                       font.pixelSize: Style.font.bodySmall
                       horizontalAlignment: Text.AlignHCenter
                       wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                      anchors.horizontalCenter: parent.horizontalCenter
+                      visible: root.pluginEnabled(pluginRow.plugin)
+                        && root.adaptingId !== root.resolvedPluginId(pluginRow.plugin)
+                        && (root.panelLoadFailed(pluginRow.plugin)
+                          || root.adaptationFailed(pluginRow.plugin)
+                          || !root.canAdapt(pluginRow.plugin))
+                      width: Math.min(parent.width, Math.round(Style.space(180)))
+                      height: Math.round(Style.space(36))
+                      radius: height / 2
+                      color: fallbackMouse.containsMouse
+                        ? Style.hoverFillFor(root.foreground, Color.accent)
+                        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+
+                      Text {
+                        anchors.centerIn: parent
+                        text: "Open native panel"
+                        color: root.foreground
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.bodySmall
+                      }
+
+                      MouseArea {
+                        id: fallbackMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.launchFallback(pluginRow.plugin)
+                      }
                     }
 
                   }
@@ -2458,6 +2898,8 @@ Item {
             Rectangle {
               id: pageAdd
               visible: root.editing
+              enabled: root.sidePanelPages.length < SidePanelModel.MAX_PAGES
+              opacity: enabled ? 1 : 0.42
               x: root.verticalEdge ? parent.width - width : (parent.width - width) / 2
               y: root.verticalEdge ? (parent.height - height) / 2 : parent.height - height
               readonly property bool expanded: pageAddHover.containsMouse
@@ -2491,7 +2933,7 @@ Item {
                 }
               }
 
-              MouseArea { id: pageAddHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
+              MouseArea { id: pageAddHover; anchors.fill: parent; enabled: pageAdd.enabled; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
             }
           }
         }
@@ -2533,7 +2975,7 @@ Item {
       enabled: root.settingsOpen && root.panelResizeMode
       reservesSpace: root.reservesSpace
       verticalEdge: root.verticalEdge
-      edge: root.edge
+      edge: root.effectiveEdge
       overlayAlignment: root.overlayAlignment
       foreground: root.chromeForeground
       resizing: root.resizingSidePanel
@@ -2550,7 +2992,10 @@ Item {
       availablePlugins: root.availablePlugins
       itemCount: root.sidePanelItemCount
       maximumItemCount: SidePanelModel.MAX_TOTAL_ITEMS
-      itemLimitReached: root.sidePanelItemLimitReached
+      itemLimitReached: root.sidePanelItemLimitReached || root.sidePanelPageItemLimitReached
+      limitMessage: root.sidePanelPageItemLimitReached
+        ? "This Side Panel page can contain up to " + SidePanelModel.MAX_ITEMS_PER_PAGE + " items."
+        : "The Side Panel can contain up to " + SidePanelModel.MAX_TOTAL_ITEMS + " items."
       foreground: root.foreground
       onCloseRequested: root.catalogOpen = false
       onPluginAddRequested: function(pluginId) { root.addPlugin(pluginId) }
@@ -2560,8 +3005,8 @@ Item {
       anchors.fill: sidePanelBody
       visible: root.settingsOpen
       z: 11
-      edge: root.edge
-      layoutMode: root.layoutMode
+      edge: root.effectiveEdge
+      layoutMode: root.effectiveLayoutMode
       verticalEdge: root.verticalEdge
       reservesSpace: root.reservesSpace
       overlayAlignment: root.overlayAlignment

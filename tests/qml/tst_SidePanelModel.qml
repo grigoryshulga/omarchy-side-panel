@@ -81,13 +81,26 @@ TestCase {
       pages: [{ items: [{ id: "one", height: SidePanelModel.MAX_ITEM_EXTENT + 1, width: SidePanelModel.MAX_ITEM_EXTENT + 1 }] }],
       edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1,
       overlayCrossSize: SidePanelModel.MAX_EDGE_SIZE + 1,
-      overlayAlignment: "bottom"
+      overlayAlignment: "bottom",
+      edgeRevealEnabled: false,
+      edgeRevealDelayMs: 3000,
+      revision: SidePanelModel.MAX_REVISION + 1
     }), [], resolve)
     compare(state.pages[0].items[0].height, SidePanelModel.MAX_ITEM_EXTENT)
     compare(state.pages[0].items[0].width, SidePanelModel.MAX_ITEM_EXTENT)
     compare(state.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
     compare(state.overlayCrossSize, SidePanelModel.MAX_EDGE_SIZE)
     compare(state.overlayAlignment, "bottom")
+    compare(state.edgeRevealEnabled, false)
+    compare(state.edgeRevealDelayMs, 2000)
+    compare(state.revision, SidePanelModel.MAX_REVISION)
+
+    var fullCrossAxis = SidePanelModel.parseState(JSON.stringify({
+      version: 1,
+      pages: [],
+      overlayCrossSize: 0
+    }), [], resolve)
+    compare(fullCrossAxis.overlayCrossSize, 0)
   }
 
   function test_move_and_resize_are_immutable() {
@@ -126,5 +139,30 @@ TestCase {
     compare(entry.pages.length, 1)
     compare(entry.pages[0].title, "Main")
     compare(entry.pages[0].items[0].id, "one")
+  }
+
+  function test_persisted_entry_allowlists_and_bounds_settings() {
+    var settings = {
+      edge: "outside",
+      layoutMode: "overlay",
+      overlayAlignment: "center",
+      edgeRevealEnabled: true,
+      edgeRevealDelayMs: 9000,
+      sidePanelRevision: SidePanelModel.MAX_REVISION + 1,
+      unknown: "must not be persisted"
+    }
+    settings.circular = settings
+
+    var entry = SidePanelModel.persistedEntry(settings, [{ title: "Main", items: [] }])
+
+    verify(entry.edge === undefined)
+    compare(entry.layoutMode, "overlay")
+    compare(entry.overlayAlignment, "center")
+    compare(entry.edgeRevealEnabled, true)
+    compare(entry.edgeRevealDelayMs, 2000)
+    compare(entry.sidePanelRevision, SidePanelModel.MAX_REVISION)
+    verify(entry.unknown === undefined)
+    verify(entry.circular === undefined)
+    verify(JSON.stringify(entry).length > 0)
   }
 }

@@ -9,6 +9,7 @@ Rectangle {
   property int itemCount: 0
   property int maximumItemCount: 0
   property bool itemLimitReached: false
+  property string limitMessage: ""
   property color foreground: Color.popups.text
 
   signal closeRequested()
@@ -160,8 +161,7 @@ Rectangle {
         visible: root.itemLimitReached
         anchors.centerIn: parent
         width: parent.width - Style.space(24)
-        text: "Remove a plugin before adding another one. The Side Panel can contain up to "
-          + root.maximumItemCount + " plugins."
+        text: "Remove an item before adding another one. " + root.limitMessage
         textFormat: Text.PlainText
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap

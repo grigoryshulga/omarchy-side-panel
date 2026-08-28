@@ -10,6 +10,7 @@ var MAX_ITEM_LABEL_LENGTH = 160
 var MAX_ITEM_ICON_LENGTH = 32
 var MAX_EDGE_SIZE = 4096
 var MAX_ITEM_EXTENT = 4096
+var MAX_REVISION = 9007199254740991
 
 function finiteNumber(value, fallback) {
   var number = Number(value)
@@ -32,6 +33,10 @@ function normalizedExtent(value, maximum) {
 
 function normalizedHeight(value) {
   return normalizedExtent(value, MAX_ITEM_EXTENT)
+}
+
+function normalizedRevision(value) {
+  return Math.floor(Math.max(0, Math.min(MAX_REVISION, finiteNumber(value, 0))))
 }
 
 function boundedEdgeSize(value, fallback) {
@@ -115,14 +120,19 @@ function parseState(raw, defaults, resolveId) {
       pages: pages,
       currentPage: Math.max(0, Math.min(pages.length - 1, Math.floor(finiteNumber(state.currentPage, 0))))
     }
+    var revision = normalizedRevision(state.revision)
+    if (revision > 0) normalized.revision = revision
     if (["left", "right", "top", "bottom"].indexOf(state.edge) >= 0) normalized.edge = state.edge
     if (["overlay", "reserve"].indexOf(state.layoutMode) >= 0) normalized.layoutMode = state.layoutMode
     if (["left", "center", "right", "top", "bottom"].indexOf(state.overlayAlignment) >= 0)
       normalized.overlayAlignment = state.overlayAlignment
+    if (typeof state.edgeRevealEnabled === "boolean") normalized.edgeRevealEnabled = state.edgeRevealEnabled
+    if (state.edgeRevealDelayMs !== undefined)
+      normalized.edgeRevealDelayMs = boundedInteger(state.edgeRevealDelayMs, 250, 0, 2000)
     var edgeSize = normalizedExtent(state.edgeSize, MAX_EDGE_SIZE)
     if (edgeSize > 0) normalized.edgeSize = edgeSize
-    var overlayCrossSize = normalizedExtent(state.overlayCrossSize, MAX_EDGE_SIZE)
-    if (overlayCrossSize > 0) normalized.overlayCrossSize = overlayCrossSize
+    if (state.overlayCrossSize !== undefined)
+      normalized.overlayCrossSize = normalizedExtent(state.overlayCrossSize, MAX_EDGE_SIZE)
     return normalized
   } catch (error) {
     return null
@@ -186,21 +196,28 @@ function copyPages(pages) {
   var result = []
   var source = Array.isArray(pages) ? pages : []
   for (var i = 0; i < source.length && i < MAX_PAGES; i++) {
-    result.push({ title: pageTitle(source[i].title, i), items: copy(source[i].items || []) })
+    var page = source[i] || ({})
+    result.push({ title: pageTitle(page.title, i), items: copy(page.items || []) })
   }
   return result
 }
 
 function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.side-panel" })
-  for (var key in settings || ({})) {
-    if (key === "id" || key === "pages" || key === "plugins" || key === "transparentBackground") continue
-    if (key === "edgeSize" || key === "overlayCrossSize") {
-      var edgeSize = normalizedExtent(settings[key], MAX_EDGE_SIZE)
-      if (edgeSize > 0) entry[key] = edgeSize
-    } else {
-      entry[key] = settings[key]
-    }
+  var source = settings || ({})
+  if (["left", "right", "top", "bottom"].indexOf(source.edge) >= 0) entry.edge = source.edge
+  if (["overlay", "reserve"].indexOf(source.layoutMode) >= 0) entry.layoutMode = source.layoutMode
+  if (["left", "center", "right", "top", "bottom"].indexOf(source.overlayAlignment) >= 0)
+    entry.overlayAlignment = source.overlayAlignment
+  if (typeof source.edgeRevealEnabled === "boolean") entry.edgeRevealEnabled = source.edgeRevealEnabled
+  if (source.edgeRevealDelayMs !== undefined)
+    entry.edgeRevealDelayMs = boundedInteger(source.edgeRevealDelayMs, 250, 0, 2000)
+  var revision = normalizedRevision(source.sidePanelRevision)
+  if (revision > 0) entry.sidePanelRevision = revision
+  for (var index = 0; index < 2; index++) {
+    var key = index === 0 ? "edgeSize" : "overlayCrossSize"
+    var edgeSize = normalizedExtent(source[key], MAX_EDGE_SIZE)
+    if (edgeSize > 0) entry[key] = edgeSize
   }
   entry.pages = copyPages(pages)
   return entry

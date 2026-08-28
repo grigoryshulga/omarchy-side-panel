@@ -17,7 +17,28 @@ TestCase {
 
   Component {
     id: sidePanelComponent
-    Project.SidePanel {}
+    Project.SidePanel {
+      cacheRoot: ""
+      statePath: ""
+      bar: QtObject {
+        property QtObject shell: QtObject {
+          property var updatedEntry: null
+          property QtObject pluginRegistry: QtObject {
+            property int registryRevision: 0
+            property bool fixturesEnabled: true
+            property var installedPlugins: ({
+              fixture: { id: "fixture", entryPoints: ({}) },
+              "fixture-two": { id: "fixture-two", entryPoints: ({}) }
+            })
+            signal pluginsChanged()
+            signal localPluginChanged(string pluginId)
+            function resolveEnabledId(id) { return String(id) }
+            function isEnabled(id) { return fixturesEnabled && installedPlugins[String(id)] !== undefined }
+          }
+          function updateEntryInline(pluginId, entry) { updatedEntry = entry }
+        }
+      }
+    }
   }
 
   function init() {
@@ -118,7 +139,7 @@ TestCase {
     verify(primaryHandle.visible)
     verify(crossHandle.visible)
 
-    sidePanel.layoutMode = "reserve"
+    sidePanel.settings = { edge: "left", layoutMode: "reserve", pages: [fixturePage, secondFixturePage] }
     verify(primaryHandle.visible)
     verify(!crossHandle.visible)
 
@@ -128,14 +149,12 @@ TestCase {
   }
 
   function test_overlay_alignment_is_limited_to_the_current_edge_orientation() {
-    sidePanel.edge = "left"
     sidePanel.settings = { edge: "left", layoutMode: "overlay", overlayAlignment: "right", pages: [fixturePage] }
     compare(sidePanel.overlayAlignment, "center")
 
     sidePanel.settings = { edge: "left", layoutMode: "overlay", overlayAlignment: "top", pages: [fixturePage] }
     compare(sidePanel.overlayAlignment, "top")
 
-    sidePanel.edge = "top"
     sidePanel.settings = { edge: "top", layoutMode: "overlay", overlayAlignment: "bottom", pages: [fixturePage] }
     compare(sidePanel.overlayAlignment, "center")
 
@@ -144,7 +163,6 @@ TestCase {
   }
 
   function test_cross_axis_resize_does_not_change_the_edge_axis_preview() {
-    sidePanel.layoutMode = "overlay"
     var edgeExtent = sidePanel.sidePanelExtent
     sidePanel.sidePanelResizeAxis = "cross"
     sidePanel.sidePanelResizePreview = 300
@@ -157,7 +175,6 @@ TestCase {
   }
 
   function test_panel_resize_snapshots_the_edge_extent_before_preview_starts() {
-    sidePanel.layoutMode = "overlay"
     sidePanel.sidePanelResizeAxis = "edge"
     sidePanel.sidePanelResizePreview = 0
     sidePanel.resizingSidePanel = false
@@ -185,18 +202,18 @@ TestCase {
     sidePanel.panelRevealProgress = 0
     wait(180)
 
-    sidePanel.edge = "left"
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     verify(sidePanel.panelRevealOffsetX < 0)
     compare(sidePanel.panelRevealOffsetY, 0)
 
-    sidePanel.edge = "right"
+    sidePanel.settings = { edge: "right", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     verify(sidePanel.panelRevealOffsetX > 0)
 
-    sidePanel.edge = "top"
+    sidePanel.settings = { edge: "top", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     compare(sidePanel.panelRevealOffsetX, 0)
     verify(sidePanel.panelRevealOffsetY < 0)
 
-    sidePanel.edge = "bottom"
+    sidePanel.settings = { edge: "bottom", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     verify(sidePanel.panelRevealOffsetY > 0)
 
     sidePanel.panelRevealProgress = 1
@@ -211,11 +228,11 @@ TestCase {
     verify(horizontalDots !== null)
     verify(verticalDots !== null)
 
-    sidePanel.edge = "left"
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     verify(horizontalDots.visible)
     verify(!verticalDots.visible)
 
-    sidePanel.edge = "top"
+    sidePanel.settings = { edge: "top", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
     verify(!horizontalDots.visible)
     verify(verticalDots.visible)
   }
@@ -325,5 +342,125 @@ TestCase {
     sidePanel.handleOutsideClick()
 
     verify(sidePanel.opened)
+  }
+
+  function test_throwing_plugin_does_not_stick_close_lifecycle() {
+    sidePanel.activePanels = [{
+      close: function() { throw new Error("fixture close failure") }
+    }]
+
+    sidePanel.close()
+
+    verify(!sidePanel.opened)
+    verify(!sidePanel.closing)
+    verify(!sidePanel.suppressPanelClose)
+    sidePanel.open()
+    verify(sidePanel.opened)
+  }
+
+  function test_throwing_plugin_does_not_skip_later_deactivation() {
+    var laterPanelClosed = false
+    sidePanel.activePanels = [
+      { close: function() { throw new Error("fixture close failure") } },
+      { close: function() { laterPanelClosed = true } }
+    ]
+
+    sidePanel.deactivateActivePanels("test")
+
+    verify(laterPanelClosed)
+    compare(sidePanel.activePanels.length, 0)
+    verify(!sidePanel.suppressPanelClose)
+  }
+
+  function test_plugin_cannot_reentrantly_close_during_internal_deactivation() {
+    sidePanel.activePanels = [{
+      sidePanelDeactivate: function() { sidePanel.close() }
+    }]
+
+    sidePanel.deactivateActivePanels("test")
+
+    verify(sidePanel.opened)
+    verify(!sidePanel.suppressPanelClose)
+  }
+
+  function test_collapsed_item_is_recreated_when_expanded_again() {
+    sidePanel.setEditing(true)
+    tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
+    var first = sidePanel.activePanels[0]
+
+    sidePanel.setExpanded("fixture")
+    compare(sidePanel.activePanels.length, 0)
+    sidePanel.setExpanded("fixture")
+
+    tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
+    verify(sidePanel.activePanels[0] !== first)
+    verify(sidePanel.activePanels[0].activated)
+  }
+
+  function test_stale_state_reader_result_is_ignored() {
+    sidePanel.stateRevision = 2
+    var stale = JSON.stringify({
+      version: 1,
+      pages: [{ title: "Stale", items: [{ id: "stale" }] }],
+      currentPage: 0
+    })
+
+    sidePanel.loadSidePanelState(stale, 1)
+
+    compare(sidePanel.sidePanelPages[0].title, "Plugins")
+    compare(sidePanel.sidePanelPages[0].items[0].id, "fixture")
+  }
+
+  function test_newer_state_recovers_runtime_settings_and_pages() {
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      edgeRevealEnabled: true,
+      sidePanelRevision: 100,
+      pages: [fixturePage]
+    }
+    var recovered = JSON.stringify({
+      version: 1,
+      revision: 200,
+      edge: "right",
+      layoutMode: "reserve",
+      edgeRevealEnabled: false,
+      edgeRevealDelayMs: 700,
+      overlayCrossSize: 0,
+      pages: [secondFixturePage],
+      currentPage: 0
+    })
+
+    sidePanel.loadSidePanelState(recovered, sidePanel.stateRevision)
+
+    compare(sidePanel.effectiveEdge, "right")
+    compare(sidePanel.effectiveLayoutMode, "reserve")
+    compare(sidePanel.edgeRevealConfigured, false)
+    compare(sidePanel.edgeRevealDelayMs, 700)
+    compare(sidePanel.configuredOverlayCrossExtent, 0)
+    compare(sidePanel.sidePanelPages[0].title, "Second")
+    compare(sidePanel.bar.shell.updatedEntry.overlayCrossSize, 0)
+    compare(sidePanel.bar.shell.updatedEntry.sidePanelRevision, 200)
+  }
+
+  function test_pinned_overlay_input_region_only_covers_the_panel() {
+    var inputRegion = findChild(sidePanel, "surfaceInputRegion")
+    verify(inputRegion !== null)
+    sidePanel.pinned = false
+    compare(inputRegion.width, inputRegion.parent.width)
+    compare(inputRegion.height, inputRegion.parent.height)
+
+    sidePanel.pinned = true
+    sidePanel.panelRevealProgress = 1
+
+    verify(inputRegion.width > 0)
+    verify(inputRegion.height > 0)
+    verify(inputRegion.width <= inputRegion.parent.width)
+    verify(inputRegion.height <= inputRegion.parent.height)
+    verify(inputRegion.width < inputRegion.parent.width || inputRegion.height < inputRegion.parent.height)
+    compare(inputRegion.width, Math.max(0,
+      Math.min(inputRegion.parent.width, inputRegion.panelRight + sidePanel.sidePanelResizeHitSlop) - inputRegion.x))
+    compare(inputRegion.height, Math.max(0,
+      Math.min(inputRegion.parent.height, inputRegion.panelBottom + sidePanel.sidePanelResizeHitSlop) - inputRegion.y))
   }
 }

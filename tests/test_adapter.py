@@ -1,7 +1,9 @@
 import importlib.util
+import os
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 from pathlib import Path
 
@@ -151,20 +153,211 @@ Panel {
             with self.assertRaisesRegex(adapter.AdaptationError, "symlinked ancestors"):
                 adapter.build(source, "Panel.qml", linked_cache, "example.plugin", ROOT)
 
-    def test_rejects_preexisting_destination_without_adapter_marker(self):
+    def test_repairs_a_corrupted_cached_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = self.write_source(root)
             cache = root / "cache"
-            namespace = adapter.hashlib.sha256(b"example.plugin").hexdigest()[:24]
-            fingerprint = adapter.hashlib.sha256(
-                (adapter.source_tree_digest(source) + "\0" + adapter.ADAPTER_VERSION).encode()
-            ).hexdigest()[:24]
-            target = cache / namespace / fingerprint
-            target.mkdir(parents=True)
-            (target / "Panel.qml").write_text("Item {}")
-            with self.assertRaisesRegex(adapter.AdaptationError, "not a SidePanel artifact"):
-                adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+            output = adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+            artifact = output.parent
+            artifact.chmod(0o700)
+            output.chmod(0o600)
+            output.write_text("Item {}")
+            artifact.chmod(0o500)
+
+            repaired = adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+
+            self.assertEqual(repaired, output)
+            self.assertIn("SidePanelHost {", repaired.read_text())
+
+    def test_repairs_an_artifact_with_a_non_object_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            cache = root / "cache"
+            output = adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+            marker = output.parent / adapter.MARKER_NAME
+            marker.chmod(0o600)
+            marker.write_text('["version","fingerprint","entryPoint","artifactDigest"]')
+
+            repaired = adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+
+            self.assertEqual(repaired, output)
+            self.assertIn("SidePanelHost {", repaired.read_text())
+
+    def test_entry_point_is_part_of_the_artifact_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            (source / "Other.qml").write_text(PANEL.replace("id: root", "id: other"))
+
+            first = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+            second = adapter.build(source, "Other.qml", root / "cache", "example.plugin", ROOT)
+
+            self.assertNotEqual(first.parent, second.parent)
+            self.assertIn("SidePanelHost {", first.read_text())
+            self.assertIn("SidePanelHost {", second.read_text())
+
+    def test_file_mode_changes_invalidate_the_artifact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            helper = source / "helper.sh"
+            helper.write_text("#!/bin/sh\n")
+            helper.chmod(0o644)
+
+            first = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+            helper.chmod(0o755)
+            second = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+
+            self.assertNotEqual(first.parent, second.parent)
+            self.assertFalse(os.stat(first.parent / "helper.sh").st_mode & 0o111)
+            self.assertTrue(os.stat(second.parent / "helper.sh").st_mode & 0o111)
+
+    def test_adapter_helper_changes_invalidate_the_artifact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            adapter_dir = root / "adapter"
+            adapter_dir.mkdir()
+            for helper in adapter.HELPER_NAMES:
+                (adapter_dir / helper).write_bytes((ROOT / helper).read_bytes())
+
+            first = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", adapter_dir)
+            host = adapter_dir / "SidePanelHost.qml"
+            host.write_text(host.read_text() + "\n// changed\n")
+            second = adapter.build(source, "Panel.qml", root / "cache", "example.plugin", adapter_dir)
+
+            self.assertNotEqual(first.parent, second.parent)
+
+    def test_nested_entry_point_uses_its_sibling_panel_and_helpers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            nested = source / "nested"
+            nested.mkdir(parents=True)
+            (nested / "BarWidget.qml").write_text("import QtQuick\nItem {}\n")
+            (nested / "Panel.qml").write_text(PANEL)
+
+            output = adapter.build(source, "nested/BarWidget.qml", root / "cache", "example.plugin", ROOT)
+
+            self.assertEqual(output.name, "Panel.qml")
+            self.assertEqual(output.parent.name, "nested")
+            for helper in adapter.HELPER_NAMES:
+                self.assertTrue((output.parent / helper).is_file())
+
+    def test_rejects_helper_name_collisions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            (source / "SidePanelHost.qml").write_text("Item {}\n")
+
+            with self.assertRaisesRegex(adapter.AdaptationError, "collides"):
+                adapter.build(source, "Panel.qml", root / "cache", "example.plugin", ROOT)
+
+    def test_rejects_relative_and_insecure_cache_roots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            with self.assertRaisesRegex(adapter.AdaptationError, "absolute"):
+                adapter.build(source, "Panel.qml", Path("relative-cache"), "example.plugin", ROOT)
+
+            insecure = root / "insecure"
+            insecure.mkdir()
+            insecure.chmod(0o777)
+            with self.assertRaisesRegex(adapter.AdaptationError, "insecure cache ancestor"):
+                adapter.build(source, "Panel.qml", insecure / "cache", "example.plugin", ROOT)
+
+    def test_tree_digest_has_unambiguous_file_boundaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "a").write_bytes(b"F:b\0X")
+            (second / "a").write_bytes(b"")
+            (second / "b").write_bytes(b"X")
+
+            self.assertNotEqual(adapter.source_tree_digest(first), adapter.source_tree_digest(second))
+
+    def test_concurrent_builds_publish_one_valid_artifact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            cache = root / "cache"
+
+            def build(_: int) -> Path:
+                return adapter.build(source, "Panel.qml", cache, "example.plugin", ROOT)
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                outputs = list(executor.map(build, range(4)))
+
+            self.assertEqual(len(set(outputs)), 1)
+            self.assertIn("SidePanelHost {", outputs[0].read_text())
+
+    def test_nested_directories_cannot_bypass_the_global_entry_limit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            first = source / "first"
+            second = source / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "one").write_text("1")
+            (first / "two").write_text("2")
+
+            with mock.patch.object(adapter, "MAX_SOURCE_ENTRIES", 4):
+                with self.assertRaisesRegex(adapter.AdaptationError, "too many entries"):
+                    adapter.source_tree_digest(source)
+
+    def test_rejects_a_source_tree_that_is_too_deeply_nested(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.write_source(root)
+            nested = source / "one"
+            nested.mkdir()
+            (nested / "two").mkdir()
+
+            with mock.patch.object(adapter, "MAX_SOURCE_DEPTH", 1):
+                with self.assertRaisesRegex(adapter.AdaptationError, "too deeply nested"):
+                    adapter.source_tree_digest(source)
+
+    def test_remove_tree_unlinks_symlinks_instead_of_following_them(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "outside"
+            target.mkdir()
+            important = target / "important"
+            important.write_text("keep")
+            tree = root / "tree"
+            tree.mkdir()
+            (tree / "link").symlink_to(target, target_is_directory=True)
+
+            adapter.remove_tree(tree)
+
+            self.assertEqual(important.read_text(), "keep")
+            self.assertFalse(tree.exists())
+
+    def test_stale_cleanup_does_not_remove_an_active_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            staging_parent = Path(temporary)
+            staging = staging_parent / "adapter-active"
+            staging.mkdir()
+            lock_path = staging / ".active"
+            lock_path.touch()
+            descriptor = os.open(lock_path, os.O_RDWR)
+            adapter.fcntl.flock(descriptor, adapter.fcntl.LOCK_EX)
+            old = adapter.time.time() - adapter.STALE_STAGING_SECONDS - 1
+            os.utime(staging, (old, old))
+            try:
+                adapter.clean_stale_staging(staging_parent)
+                self.assertTrue(staging.is_dir())
+            finally:
+                os.close(descriptor)
+
+            adapter.clean_stale_staging(staging_parent)
+            self.assertFalse(staging.exists())
 
 
 if __name__ == "__main__":

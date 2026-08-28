@@ -12,24 +12,70 @@ import sys
 MISSING = 1
 TOO_LARGE = 2
 UNSAFE = 3
+IO_ERROR = 4
+MAX_STATE_BYTES = 64 * 1024
+READ_CHUNK_BYTES = 64 * 1024
+
+
+def open_safe_parent(path: str) -> tuple[int, str]:
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        raise ValueError("state path is not absolute and normalized")
+    parent, name = os.path.split(path)
+    if not name:
+        raise ValueError("state path has no file name")
+
+    resolved_parent = os.path.realpath(parent)
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(resolved_parent, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise ValueError("state directory is not private to the current user")
+        if stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ValueError("state directory is writable by another user")
+
+        ancestor = resolved_parent
+        while True:
+            metadata = os.lstat(ancestor)
+            if metadata.st_uid not in (0, os.getuid()):
+                raise ValueError("state path has an untrusted ancestor")
+            writable_by_others = stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH)
+            if writable_by_others and not metadata.st_mode & stat.S_ISVTX:
+                raise ValueError("state path has an insecure ancestor")
+            next_ancestor = os.path.dirname(ancestor)
+            if next_ancestor == ancestor:
+                break
+            ancestor = next_ancestor
+        return descriptor, name
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def read_state(path: str, maximum: int) -> bytes:
     flags = os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
     if not hasattr(os, "O_NOFOLLOW"):
         raise OSError(errno.ENOTSUP, "O_NOFOLLOW is unavailable")
-    descriptor = os.open(path, flags | os.O_NOFOLLOW)
+    parent_descriptor, name = open_safe_parent(path)
+    try:
+        descriptor = os.open(name, flags | os.O_NOFOLLOW, dir_fd=parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("state file is not a regular file")
+        if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ValueError("state file is writable by another user")
         if metadata.st_size > maximum:
             raise OverflowError("state file exceeds the size limit")
 
         chunks: list[bytes] = []
         remaining = maximum + 1
         while remaining > 0:
-            chunk = os.read(descriptor, remaining)
+            chunk = os.read(descriptor, min(READ_CHUNK_BYTES, remaining))
             if not chunk:
                 break
             chunks.append(chunk)
@@ -47,8 +93,8 @@ def main() -> int:
         return MISSING
     try:
         maximum = int(sys.argv[2])
-        if maximum < 1:
-            return MISSING
+        if maximum < 1 or maximum > MAX_STATE_BYTES:
+            raise ValueError("invalid state size limit")
         sys.stdout.buffer.write(read_state(sys.argv[1], maximum))
         return 0
     except OverflowError:
@@ -58,7 +104,9 @@ def main() -> int:
     except OSError as error:
         if error.errno in (errno.ELOOP, errno.ENXIO, errno.ENOTSUP):
             return UNSAFE
-        return MISSING
+        if error.errno in (errno.ENOENT, errno.ENOTDIR):
+            return MISSING
+        return IO_ERROR
 
 
 if __name__ == "__main__":
