@@ -100,6 +100,7 @@ Item {
   readonly property int edgeRevealDelayMs: SidePanelModel.boundedInteger(
     setting("edgeRevealDelayMs", 250), 250, 0, 2000
   )
+  readonly property bool openAnimationEnabled: setting("openAnimationEnabled", true) === true
   readonly property real configuredExtent: SidePanelModel.boundedEdgeSize(
     setting("edgeSize", verticalEdge ? sidePanelWidth : sidePanelHeight),
     verticalEdge ? sidePanelWidth : sidePanelHeight
@@ -559,14 +560,18 @@ Item {
 
   function handlePanelWheel(modifiers, deltaX, deltaY) {
     if (modifiers & Qt.AltModifier) {
-      // Treat either wheel axis as page navigation. Prefer the dominant axis
-      // for diagonal input so one gesture produces only one page change.
-      var pageDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY
-      if (pageDelta > 0) movePage(1)
-      else if (pageDelta < 0) movePage(-1)
+      handlePageWheel(deltaX, deltaY)
       return
     }
     scrollPluginList(deltaX, deltaY)
+  }
+
+  function handlePageWheel(deltaX, deltaY) {
+    // Treat either wheel axis as page navigation. Prefer the dominant axis
+    // for diagonal input so one gesture produces only one page change.
+    var pageDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY
+    if (pageDelta > 0) movePage(1)
+    else if (pageDelta < 0) movePage(-1)
   }
 
   function persistSidePanelSetting(name, value) {
@@ -617,6 +622,9 @@ Item {
     var requestedRevealDelay = overrides && overrides.edgeRevealDelayMs !== undefined
       ? overrides.edgeRevealDelayMs : setting("edgeRevealDelayMs", 250)
     state.edgeRevealDelayMs = SidePanelModel.boundedInteger(requestedRevealDelay, 250, 0, 2000)
+    var requestedOpenAnimation = overrides && overrides.openAnimationEnabled !== undefined
+      ? overrides.openAnimationEnabled : setting("openAnimationEnabled", true)
+    if (typeof requestedOpenAnimation === "boolean") state.openAnimationEnabled = requestedOpenAnimation
     var requestedEdgeSize = overrides && overrides.edgeSize !== undefined
       ? overrides.edgeSize : setting("edgeSize", 0)
     requestedEdgeSize = SidePanelModel.normalizedExtent(requestedEdgeSize, SidePanelModel.MAX_EDGE_SIZE)
@@ -687,7 +695,7 @@ Item {
     var entry = SidePanelModel.persistedEntry(settings, state.pages)
     var names = [
       "edge", "edgeSize", "overlayCrossSize", "overlayAlignment", "layoutMode",
-      "edgeRevealEnabled", "edgeRevealDelayMs"
+      "edgeRevealEnabled", "edgeRevealDelayMs", "openAnimationEnabled"
     ]
     for (var index = 0; index < names.length; index++)
       if (state[names[index]] !== undefined) entry[names[index]] = state[names[index]]
@@ -1344,11 +1352,13 @@ Item {
 
   function open() {
     if (opened) return
-    panelRevealProgress = 0
+    panelRevealProgress = openAnimationEnabled ? 0 : 1
     opened = true
-    Qt.callLater(function() {
-      if (opened) panelRevealProgress = 1
-    })
+    if (openAnimationEnabled) {
+      Qt.callLater(function() {
+        if (opened) panelRevealProgress = 1
+      })
+    }
   }
   function close() {
     if (closing || suppressPanelClose || !opened) return
@@ -1374,6 +1384,7 @@ Item {
   function toggle() { opened ? close() : open() }
 
   Behavior on panelRevealProgress {
+    enabled: root.openAnimationEnabled
     NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
   }
 
@@ -1731,8 +1742,9 @@ Item {
 
   PanelWindow {
     id: edgeRevealSurface
+    objectName: "edgeRevealSurface"
     screen: root.sidePanelScreen
-    visible: root.edgeRevealEnabled && !root.opened
+    visible: !root.opened
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "gshulga-side-panel-edge-reveal"
@@ -1751,11 +1763,13 @@ Item {
       height: root.verticalEdge ? parent.height : 2
 
       MouseArea {
+        objectName: "edgeRevealMouseArea"
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-        onEntered: root.startEdgeReveal()
+        acceptedButtons: Qt.LeftButton
+        onEntered: if (root.edgeRevealEnabled) root.startEdgeReveal()
         onExited: root.cancelEdgeReveal()
+        onDoubleClicked: root.open()
       }
     }
   }
@@ -2104,7 +2118,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.round(Style.space(22))
                 height: width
-                radius: height / 2
+                radius: Style.cornerRadius > 0 ? height / 2 : 0
                 color: titleRenameMouse.containsMouse
                   ? Style.hoverFillFor(root.chromeForeground, Color.accent)
                   : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
@@ -2166,7 +2180,7 @@ Item {
               readonly property bool expanded: settingsHover.containsMouse
               width: expanded ? Math.round(Style.space(104)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               color: settingsHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
@@ -2211,7 +2225,7 @@ Item {
               readonly property bool expanded: shortcutsHover.containsMouse
               width: expanded ? Math.round(Style.space(112)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               color: shortcutsHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
@@ -2261,7 +2275,7 @@ Item {
               readonly property bool expanded: editHover.containsMouse
               width: expanded ? Math.round(Style.space(82)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               color: root.editing
                 ? Style.selectedFillFor(root.chromeForeground, Color.accent)
@@ -2310,7 +2324,7 @@ Item {
               readonly property bool expanded: addHover.containsMouse
               width: expanded ? Math.round(Style.space(118)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               opacity: root.sidePanelItemLimitReached || root.sidePanelPageItemLimitReached ? 0.5 : 1
               color: addHover.containsMouse
@@ -2360,7 +2374,7 @@ Item {
               readonly property bool expanded: removePageHover.containsMouse
               width: expanded ? Math.round(Style.space(126)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               opacity: enabled ? 1 : 0.42
               color: removePageHover.containsMouse
@@ -2407,7 +2421,7 @@ Item {
               readonly property bool expanded: pinHover.containsMouse
               width: expanded ? Math.round(Style.space(root.pinned ? 86 : 72)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               color: root.pinned
                 ? Style.selectedFillFor(root.chromeForeground, Color.accent)
@@ -2521,7 +2535,7 @@ Item {
                 visible: root.editing
                 width: parent.width
                 height: Math.round(Style.space(42))
-                radius: Style.cornerRadius / 2
+                radius: Style.cornerRadius
                 color: pluginRow.expanded
                   ? Style.selectedFillFor(root.foreground, Color.accent)
                   : (headerDrag.containsMouse
@@ -2610,7 +2624,7 @@ Item {
                   readonly property bool expanded: deleteMouse.containsMouse
                   width: expanded ? Math.round(Style.space(96)) : Math.round(Style.space(30))
                   height: Math.round(Style.space(30))
-                  radius: height / 2
+                  radius: Style.cornerRadius > 0 ? height / 2 : 0
                   clip: true
                   color: deleteMouse.containsMouse
                     ? Style.hoverFillFor(root.foreground, Color.accent)
@@ -2662,7 +2676,7 @@ Item {
                 Rectangle {
                   anchors.fill: parent
                   anchors.topMargin: Style.space(5)
-                  radius: Style.cornerRadius / 2
+                  radius: Style.cornerRadius
                   color: root.transparentBackground
                     ? Color.popups.background
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
@@ -2741,7 +2755,7 @@ Item {
                           || !root.canAdapt(pluginRow.plugin))
                       width: Math.min(parent.width, Math.round(Style.space(180)))
                       height: Math.round(Style.space(36))
-                      radius: height / 2
+                      radius: Style.cornerRadius > 0 ? height / 2 : 0
                       color: fallbackMouse.containsMouse
                         ? Style.hoverFillFor(root.foreground, Color.accent)
                         : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
@@ -2833,7 +2847,7 @@ Item {
               y: root.verticalEdge ? root.dropLineY - height / 2 : Style.space(4)
               width: root.verticalEdge ? parent.width - Style.space(8) : Math.max(2, Math.round(Style.space(2)))
               height: root.verticalEdge ? Math.max(2, Math.round(Style.space(2))) : parent.height - Style.space(8)
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               color: Color.accent
               z: 3
             }
@@ -2870,7 +2884,15 @@ Item {
                   height: width
                   radius: width / 2
                   color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.selectPage(index)
+                    onWheel: function(wheel) {
+                      root.handlePageWheel(wheel.angleDelta.x, wheel.angleDelta.y)
+                      wheel.accepted = true
+                    }
+                  }
                 }
               }
             }
@@ -2890,7 +2912,15 @@ Item {
                   height: width
                   radius: width / 2
                   color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectPage(index) }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.selectPage(index)
+                    onWheel: function(wheel) {
+                      root.handlePageWheel(wheel.angleDelta.x, wheel.angleDelta.y)
+                      wheel.accepted = true
+                    }
+                  }
                 }
               }
             }
@@ -2905,7 +2935,7 @@ Item {
               readonly property bool expanded: pageAddHover.containsMouse
               width: expanded ? Math.round(Style.space(102)) : Math.round(Style.space(28))
               height: Math.round(Style.space(28))
-              radius: height / 2
+              radius: Style.cornerRadius > 0 ? height / 2 : 0
               clip: true
               color: pageAddHover.containsMouse
                 ? Style.hoverFillFor(root.chromeForeground, Color.accent)
@@ -2943,7 +2973,7 @@ Item {
           visible: root.editing && root.draggedId !== ""
           width: root.dragWidth
           height: Math.round(Style.space(42))
-          radius: Style.cornerRadius / 2
+          radius: Style.cornerRadius
           color: Style.selectedFillFor(root.foreground, Color.accent)
           border.width: 1
           border.color: Color.popups.border
@@ -3014,6 +3044,7 @@ Item {
       resizeMode: root.panelResizeMode
       edgeRevealEnabled: root.edgeRevealConfigured
       edgeRevealDelayMs: root.edgeRevealDelayMs
+      openAnimationEnabled: root.openAnimationEnabled
       onCloseRequested: root.settingsOpen = false
       onSettingRequested: function(name, value) { root.persistSidePanelSetting(name, value) }
       onResizeModeRequested: function(enabled) {

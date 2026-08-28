@@ -129,6 +129,8 @@ function parseState(raw, defaults, resolveId) {
     if (typeof state.edgeRevealEnabled === "boolean") normalized.edgeRevealEnabled = state.edgeRevealEnabled
     if (state.edgeRevealDelayMs !== undefined)
       normalized.edgeRevealDelayMs = boundedInteger(state.edgeRevealDelayMs, 250, 0, 2000)
+    if (typeof state.openAnimationEnabled === "boolean")
+      normalized.openAnimationEnabled = state.openAnimationEnabled
     var edgeSize = normalizedExtent(state.edgeSize, MAX_EDGE_SIZE)
     if (edgeSize > 0) normalized.edgeSize = edgeSize
     if (state.overlayCrossSize !== undefined)
@@ -212,6 +214,8 @@ function persistedEntry(settings, pages) {
   if (typeof source.edgeRevealEnabled === "boolean") entry.edgeRevealEnabled = source.edgeRevealEnabled
   if (source.edgeRevealDelayMs !== undefined)
     entry.edgeRevealDelayMs = boundedInteger(source.edgeRevealDelayMs, 250, 0, 2000)
+  if (typeof source.openAnimationEnabled === "boolean")
+    entry.openAnimationEnabled = source.openAnimationEnabled
   var revision = normalizedRevision(source.sidePanelRevision)
   if (revision > 0) entry.sidePanelRevision = revision
   for (var index = 0; index < 2; index++) {

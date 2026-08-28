@@ -84,6 +84,7 @@ TestCase {
       overlayAlignment: "bottom",
       edgeRevealEnabled: false,
       edgeRevealDelayMs: 3000,
+      openAnimationEnabled: false,
       revision: SidePanelModel.MAX_REVISION + 1
     }), [], resolve)
     compare(state.pages[0].items[0].height, SidePanelModel.MAX_ITEM_EXTENT)
@@ -93,6 +94,7 @@ TestCase {
     compare(state.overlayAlignment, "bottom")
     compare(state.edgeRevealEnabled, false)
     compare(state.edgeRevealDelayMs, 2000)
+    compare(state.openAnimationEnabled, false)
     compare(state.revision, SidePanelModel.MAX_REVISION)
 
     var fullCrossAxis = SidePanelModel.parseState(JSON.stringify({
@@ -148,6 +150,7 @@ TestCase {
       overlayAlignment: "center",
       edgeRevealEnabled: true,
       edgeRevealDelayMs: 9000,
+      openAnimationEnabled: false,
       sidePanelRevision: SidePanelModel.MAX_REVISION + 1,
       unknown: "must not be persisted"
     }
@@ -160,6 +163,7 @@ TestCase {
     compare(entry.overlayAlignment, "center")
     compare(entry.edgeRevealEnabled, true)
     compare(entry.edgeRevealDelayMs, 2000)
+    compare(entry.openAnimationEnabled, false)
     compare(entry.sidePanelRevision, SidePanelModel.MAX_REVISION)
     verify(entry.unknown === undefined)
     verify(entry.circular === undefined)

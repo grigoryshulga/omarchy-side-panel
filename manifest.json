@@ -23,6 +23,7 @@
       "overlayAlignment": "center",
       "edgeRevealEnabled": true,
       "edgeRevealDelayMs": 250,
+      "openAnimationEnabled": true,
       "transparentBackground": false
     },
     "schema": [
@@ -66,6 +67,13 @@
         "max": 2000,
         "step": 50,
         "defaultValue": 250
+      },
+      {
+        "key": "openAnimationEnabled",
+        "type": "boolean",
+        "label": "Animate opening",
+        "description": "Slide the Side Panel in from its configured edge when it opens.",
+        "defaultValue": true
       },
       {
         "key": "transparentBackground",

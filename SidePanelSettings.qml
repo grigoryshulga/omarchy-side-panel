@@ -14,6 +14,7 @@ Item {
   property bool resizeMode: false
   property bool edgeRevealEnabled: true
   property int edgeRevealDelayMs: 250
+  property bool openAnimationEnabled: true
 
   signal closeRequested()
   signal settingRequested(string name, var value)
@@ -58,7 +59,7 @@ Item {
           readonly property bool expanded: closeHover.containsMouse
           width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
           height: Math.round(Style.space(28))
-          radius: height / 2
+          radius: Style.cornerRadius > 0 ? height / 2 : 0
           clip: true
           color: closeHover.containsMouse
             ? Style.hoverFillFor(root.foreground, Color.accent)
@@ -100,7 +101,7 @@ Item {
             required property var modelData
             width: Math.floor((edgeOptions.width - edgeOptions.spacing * 3) / 4)
             height: Math.round(Style.space(52))
-            radius: Style.cornerRadius / 2
+            radius: Style.cornerRadius
             color: root.edge === modelData.edge
               ? Style.selectedFillFor(root.foreground, Color.accent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
@@ -127,7 +128,7 @@ Item {
             required property var modelData
             width: Math.floor((displayModeOptions.width - displayModeOptions.spacing) / 2)
             height: Math.round(Style.space(42))
-            radius: Style.cornerRadius / 2
+            radius: Style.cornerRadius
             color: root.layoutMode === modelData.mode
               ? Style.selectedFillFor(root.foreground, Color.accent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
@@ -162,7 +163,7 @@ Item {
             required property var modelData
             width: Math.floor((alignmentOptions.width - alignmentOptions.spacing * 2) / 3)
             height: alignmentOptions.height
-            radius: Style.cornerRadius / 2
+            radius: Style.cornerRadius
             color: root.overlayAlignment === modelData.value
               ? Style.selectedFillFor(root.foreground, Color.accent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
@@ -179,7 +180,7 @@ Item {
         objectName: "resizePanelButton"
         width: parent.width
         height: Math.round(Style.space(42))
-        radius: Style.cornerRadius / 2
+        radius: Style.cornerRadius
         color: resizeMouse.containsMouse || root.resizeMode
           ? Style.hoverFillFor(root.foreground, Color.accent)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
@@ -190,6 +191,31 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: root.resizeModeRequested(!root.resizeMode)
+        }
+      }
+
+      Text { text: "APPEARANCE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+
+      Row {
+        width: parent.width
+        height: Math.max(animationLabel.implicitHeight, animationToggle.implicitHeight)
+        Text {
+          id: animationLabel
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Animate opening"
+          color: root.foreground
+          font.family: Style.font.family
+          font.pixelSize: Style.font.bodySmall
+        }
+        ToggleSwitch {
+          id: animationToggle
+          objectName: "openAnimationEnabledControl"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          checked: root.openAnimationEnabled
+          foreground: root.foreground
+          onToggled: root.settingRequested("openAnimationEnabled", !root.openAnimationEnabled)
         }
       }
 

@@ -52,7 +52,10 @@ Side Panel always retains at least one page.
   reorder items, use the item controls to expand or remove them, and drag their
   grips to resize them.
 - The ordinary mouse wheel scrolls the hovered plugin panel. Hold `Alt` while
-  scrolling in either wheel direction to move between Side Panel pages.
+  scrolling anywhere in the Side Panel, or scroll directly over the page
+  indicators without `Alt`, to move between Side Panel pages.
+- Double-click the configured screen Edge to open the Side Panel immediately,
+  independently of the hover-reveal setting.
 
 ### Settings
 
@@ -66,12 +69,15 @@ The Settings page provides these controls:
   or right.
 - **Resize Panel**: enables the resize grips. Overlay has grips for both axes;
   Reserve Space exposes only the grip that changes the Side Panel's edge extent.
+- **Animate opening**: enables or disables the slide-in animation.
 - **Reveal at screen edge**: opens the Side Panel when the pointer rests at its
   configured Edge. It is enabled by default.
 - **Delay**: the pointer dwell time before edge reveal, from 0 to 2000 ms. The
   default is 250 ms.
 
 Omarchy's plugin settings also offer a transparent Side Panel background.
+Side Panel corners and controls follow Omarchy's current Hyprland rounding
+setting automatically.
 
 ## Keyboard shortcuts
 

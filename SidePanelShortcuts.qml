@@ -38,7 +38,7 @@ Item {
         readonly property bool expanded: closeHover.containsMouse
         width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
         height: Math.round(Style.space(28))
-        radius: height / 2
+        radius: Style.cornerRadius > 0 ? height / 2 : 0
         clip: true
         color: closeHover.containsMouse
           ? Style.hoverFillFor(root.foreground, Color.accent)

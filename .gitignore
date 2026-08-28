@@ -1,3 +1,11 @@
 .qmlcache/
 *.qmlc
 __pycache__/
+
+# Codex/agent workspace files
+.agents/
+.codex/
+AGENTS.md
+CONTEXT.md
+docs/agents/
+session-*.md

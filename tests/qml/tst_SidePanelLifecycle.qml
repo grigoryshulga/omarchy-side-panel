@@ -123,6 +123,24 @@ TestCase {
   function test_edge_reveal_controls_are_available_in_side_panel_settings() {
     verify(findChild(sidePanel, "edgeRevealEnabledControl") !== null)
     verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
+    verify(findChild(sidePanel, "openAnimationEnabledControl") !== null)
+  }
+
+  function test_edge_double_click_target_remains_available_when_hover_reveal_is_disabled() {
+    sidePanel.close()
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      edgeRevealEnabled: false,
+      pages: [fixturePage]
+    }
+
+    var edgeSurface = findChild(sidePanel, "edgeRevealSurface")
+    var edgeMouseArea = findChild(sidePanel, "edgeRevealMouseArea")
+    verify(edgeSurface !== null)
+    verify(edgeMouseArea !== null)
+    verify(edgeSurface.visible)
+    compare(edgeMouseArea.acceptedButtons, Qt.LeftButton)
   }
 
   function test_panel_resize_controls_are_scoped_to_settings_and_display_mode() {
@@ -250,6 +268,30 @@ TestCase {
 
     sidePanel.handlePanelWheel(Qt.AltModifier, 0, -120)
     compare(sidePanel.currentPage, 0)
+  }
+
+  function test_page_indicator_wheel_moves_between_pages_without_alt() {
+    sidePanel.currentPage = 0
+    sidePanel.handlePageWheel(0, 120)
+    compare(sidePanel.currentPage, 1)
+
+    sidePanel.handlePageWheel(-120, 0)
+    compare(sidePanel.currentPage, 0)
+  }
+
+  function test_open_animation_can_be_disabled() {
+    sidePanel.close()
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      openAnimationEnabled: false,
+      pages: [fixturePage]
+    }
+
+    sidePanel.open()
+    compare(sidePanel.panelRevealProgress, 1)
+    compare(sidePanel.panelRevealOffsetX, 0)
+    compare(sidePanel.panelRevealOffsetY, 0)
   }
 
   function test_edit_keyboard_commands_focus_resize_and_reorder_a_plugin() {
@@ -426,6 +468,7 @@ TestCase {
       layoutMode: "reserve",
       edgeRevealEnabled: false,
       edgeRevealDelayMs: 700,
+      openAnimationEnabled: false,
       overlayCrossSize: 0,
       pages: [secondFixturePage],
       currentPage: 0
@@ -437,6 +480,7 @@ TestCase {
     compare(sidePanel.effectiveLayoutMode, "reserve")
     compare(sidePanel.edgeRevealConfigured, false)
     compare(sidePanel.edgeRevealDelayMs, 700)
+    compare(sidePanel.openAnimationEnabled, false)
     compare(sidePanel.configuredOverlayCrossExtent, 0)
     compare(sidePanel.sidePanelPages[0].title, "Second")
     compare(sidePanel.bar.shell.updatedEntry.overlayCrossSize, 0)

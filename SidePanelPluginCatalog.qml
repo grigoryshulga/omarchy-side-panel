@@ -90,7 +90,7 @@ Rectangle {
           required property var modelData
           width: ListView.view ? ListView.view.width : 0
           height: Math.round(Style.space(48))
-          radius: Style.cornerRadius / 2
+          radius: Style.cornerRadius
           color: rowHover.containsMouse
             ? Style.hoverFillFor(root.foreground, Color.accent)
             : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035)
