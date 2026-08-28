@@ -45,7 +45,7 @@ Item {
           id: title
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          text: "SIDE PANEL"
+          text: "SETTINGS"
           color: root.foreground
           font.family: Style.font.family
           font.pixelSize: Style.font.title
@@ -84,7 +84,17 @@ Item {
         }
       }
 
-      Text { text: "EDGE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+      Text { text: "PLACEMENT"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+
+      Text {
+        width: parent.width
+        text: "Choose the screen edge where the Side Panel appears."
+        color: root.foreground
+        opacity: 0.62
+        wrapMode: Text.WordWrap
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+      }
 
       Row {
         id: edgeOptions
@@ -123,7 +133,10 @@ Item {
         width: parent.width
         spacing: Style.space(8)
         Repeater {
-          model: [{ mode: "overlay", label: "Overlay" }, { mode: "reserve", label: "Reserve Space" }]
+          model: [
+            { mode: "overlay", icon: "\uf06e", label: "Overlay" },
+            { mode: "reserve", icon: "\uf0db", label: "Reserve Space" }
+          ]
           delegate: Rectangle {
             required property var modelData
             width: Math.floor((displayModeOptions.width - displayModeOptions.spacing) / 2)
@@ -132,10 +145,27 @@ Item {
             color: root.layoutMode === modelData.mode
               ? Style.selectedFillFor(root.foreground, Color.accent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-            Text { anchors.centerIn: parent; text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(5)
+              Text { text: modelData.icon; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              Text { text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+            }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.settingRequested("layoutMode", modelData.mode) }
           }
         }
+      }
+
+      Text {
+        width: parent.width
+        text: root.layoutMode === "reserve"
+          ? "Reserves space for the Side Panel and shifts windows away from its edge."
+          : "Floats over windows without moving them."
+        color: root.foreground
+        opacity: 0.62
+        wrapMode: Text.WordWrap
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
       }
 
       Text {
@@ -157,8 +187,8 @@ Item {
         spacing: Style.space(8)
         Repeater {
           model: root.verticalEdge
-            ? [{ value: "top", label: "Top" }, { value: "center", label: "Center" }, { value: "bottom", label: "Bottom" }]
-            : [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]
+            ? [{ value: "top", icon: "\uf062", label: "Top" }, { value: "center", icon: "\uf0b2", label: "Center" }, { value: "bottom", icon: "\uf063", label: "Bottom" }]
+            : [{ value: "left", icon: "\uf060", label: "Left" }, { value: "center", icon: "\uf0b2", label: "Center" }, { value: "right", icon: "\uf061", label: "Right" }]
           delegate: Rectangle {
             required property var modelData
             width: Math.floor((alignmentOptions.width - alignmentOptions.spacing * 2) / 3)
@@ -167,13 +197,18 @@ Item {
             color: root.overlayAlignment === modelData.value
               ? Style.selectedFillFor(root.foreground, Color.accent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-            Text { anchors.centerIn: parent; text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(5)
+              Text { text: modelData.icon; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              Text { text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+            }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.settingRequested("overlayAlignment", modelData.value) }
           }
         }
       }
 
-      Text { text: "PANEL SIZE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+      Text { text: "SIZE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
 
       Rectangle {
         id: resizePanelButton
@@ -184,7 +219,12 @@ Item {
         color: resizeMouse.containsMouse || root.resizeMode
           ? Style.hoverFillFor(root.foreground, Color.accent)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-        Text { anchors.centerIn: parent; text: root.resizeMode ? "Done resizing" : "Resize Panel"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+        Row {
+          anchors.centerIn: parent
+          spacing: Style.space(7)
+          Text { text: root.resizeMode ? "\uf00c" : "\uf065"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: root.resizeMode ? "Done resizing" : "Resize Panel"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+        }
         MouseArea {
           id: resizeMouse
           anchors.fill: parent
@@ -194,19 +234,18 @@ Item {
         }
       }
 
-      Text { text: "APPEARANCE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+      Text { text: "BEHAVIOR"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
 
       Row {
         width: parent.width
         height: Math.max(animationLabel.implicitHeight, animationToggle.implicitHeight)
-        Text {
+        Row {
           id: animationLabel
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          text: "Animate opening"
-          color: root.foreground
-          font.family: Style.font.family
-          font.pixelSize: Style.font.bodySmall
+          spacing: Style.space(7)
+          Text { text: "\uf01e"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Animate opening"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
         }
         ToggleSwitch {
           id: animationToggle
@@ -219,19 +258,16 @@ Item {
         }
       }
 
-      Text { text: "EDGE REVEAL"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-
       Row {
         width: parent.width
         height: Math.max(revealLabel.implicitHeight, revealToggle.implicitHeight)
-        Text {
+        Row {
           id: revealLabel
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          text: "Reveal at screen edge"
-          color: root.foreground
-          font.family: Style.font.family
-          font.pixelSize: Style.font.bodySmall
+          spacing: Style.space(7)
+          Text { text: "\uf06e"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Reveal at screen edge"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
         }
         ToggleSwitch {
           id: revealToggle
@@ -247,15 +283,14 @@ Item {
       Row {
         width: parent.width
         height: Math.max(delayLabel.implicitHeight, delayControl.implicitHeight)
-        Text {
+        Row {
           id: delayLabel
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          text: "Delay"
-          color: root.foreground
+          spacing: Style.space(7)
           opacity: root.edgeRevealEnabled ? 1 : 0.5
-          font.family: Style.font.family
-          font.pixelSize: Style.font.bodySmall
+          Text { text: "\uf017"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Reveal delay"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
         }
         Text {
           anchors.right: delayControl.left
