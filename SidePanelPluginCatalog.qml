@@ -149,7 +149,7 @@ Rectangle {
         Text {
           anchors.centerIn: parent
           visible: root.availablePlugins.length === 0
-          text: "All installed plugins are already in this list."
+          text: "No other installed plugins were found."
           color: root.foreground
           opacity: 0.64
           font.family: Style.font.family

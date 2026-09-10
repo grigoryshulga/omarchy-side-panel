@@ -59,20 +59,7 @@ Item {
       event.accepted = true
     }
   }
-  onOpenChanged: {
-    if (open && focusTarget) {
-      Qt.callLater(function() {
-        if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
-      })
-    } else if (!open && sidePanelHost && page && typeof sidePanelHost.panelClosed === "function") {
-      // Native panels commonly hide themselves before summoning another
-      // window. Defer SidePanel teardown so the summon call can still run.
-      Qt.callLater(function() {
-        if (!root.open && root.sidePanelHost && root.page && typeof root.sidePanelHost.panelClosed === "function")
-          root.sidePanelHost.panelClosed(root.page)
-      })
-    }
-  }
+  onOpenChanged: if (open && focusTarget) Qt.callLater(root.focusPanel)
 
   Item {
     id: contentHolder

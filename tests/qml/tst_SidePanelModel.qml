@@ -82,6 +82,7 @@ TestCase {
       edgeSize: SidePanelModel.MAX_EDGE_SIZE + 1,
       overlayCrossSize: SidePanelModel.MAX_EDGE_SIZE + 1,
       overlayAlignment: "bottom",
+      openTrigger: "none",
       edgeRevealEnabled: false,
       edgeRevealDelayMs: 3000,
       openAnimationEnabled: false,
@@ -92,6 +93,7 @@ TestCase {
     compare(state.edgeSize, SidePanelModel.MAX_EDGE_SIZE)
     compare(state.overlayCrossSize, SidePanelModel.MAX_EDGE_SIZE)
     compare(state.overlayAlignment, "bottom")
+    compare(state.openTrigger, "none")
     compare(state.edgeRevealEnabled, false)
     compare(state.edgeRevealDelayMs, 2000)
     compare(state.openAnimationEnabled, false)
@@ -143,11 +145,64 @@ TestCase {
     compare(entry.pages[0].items[0].id, "one")
   }
 
+  function test_plugin_catalog_uses_public_list_and_manifests() {
+    var catalog = SidePanelModel.pluginCatalogFromPublicSources(
+      JSON.stringify([
+        { id: "omarchy.clock", name: "Clock", enabled: true, firstParty: true, kinds: ["bar-widget"] },
+        { id: "gshulga.side-panel", name: "Side Panel", enabled: true },
+        { id: "acme.weather", name: "Weather", enabled: false, firstParty: false },
+        { id: "acme.weather", name: "Duplicate" }
+      ]),
+      JSON.stringify([
+        {
+          id: "acme.weather",
+          name: "Weather Panel",
+          description: "Forecast",
+          firstParty: false,
+          sourceDir: "/tmp/acme.weather",
+          entryPoints: { barWidget: "Panel.qml" }
+        }
+      ])
+    )
+    compare(catalog.length, 2)
+    compare(catalog[0].id, "omarchy.clock")
+    compare(catalog[0].name, "Clock")
+    compare(catalog[0].__isFirstParty, true)
+    compare(catalog[1].id, "acme.weather")
+    compare(catalog[1].name, "Weather Panel")
+    compare(catalog[1].description, "Forecast")
+    compare(catalog[1].enabled, false)
+    compare(catalog[1].entryPoints.barWidget, "Panel.qml")
+    compare(catalog[1].__sourceDir, "/tmp/acme.weather")
+    compare(SidePanelModel.pluginCatalogFromPublicSources("{", "[]").length, 0)
+  }
+
+  function test_enable_in_config_does_not_place_bar_widgets() {
+    var config = {
+      version: 1,
+      bar: { layout: { left: [{ id: "gshulga.side-panel" }], center: [], right: [] } },
+      plugins: [{ id: "already" }],
+      disabledPlugins: ["acme.weather"]
+    }
+    verify(SidePanelModel.enableInConfig(config, "acme.weather", false))
+    compare(config.plugins.length, 2)
+    compare(config.plugins[1].id, "acme.weather")
+    compare(config.bar.layout.left.length, 1)
+    compare(config.bar.layout.left[0].id, "gshulga.side-panel")
+    verify(config.disabledPlugins === undefined)
+    verify(SidePanelModel.enableInConfig(config, "acme.weather", false))
+    compare(config.plugins.length, 2)
+    verify(SidePanelModel.enableInConfig(config, "omarchy.clock", true))
+    compare(config.plugins.length, 2)
+    verify(!SidePanelModel.enableInConfig(config, "gshulga.side-panel", false))
+  }
+
   function test_persisted_entry_allowlists_and_bounds_settings() {
     var settings = {
       edge: "outside",
       layoutMode: "overlay",
       overlayAlignment: "center",
+      openTrigger: "hover",
       edgeRevealEnabled: true,
       edgeRevealDelayMs: 9000,
       openAnimationEnabled: false,
@@ -161,6 +216,7 @@ TestCase {
     verify(entry.edge === undefined)
     compare(entry.layoutMode, "overlay")
     compare(entry.overlayAlignment, "center")
+    compare(entry.openTrigger, "hover")
     compare(entry.edgeRevealEnabled, true)
     compare(entry.edgeRevealDelayMs, 2000)
     compare(entry.openAnimationEnabled, false)

@@ -8,9 +8,5 @@ Item {
   property bool activated: false
 
   function open() { activated = true }
-  function close() {
-    activated = false
-    // SidePanelHost reports a native panel closing on the next event-loop turn.
-    Qt.callLater(function() { sidePanelHost.panelClosed(root) })
-  }
+  function close() { activated = false }
 }

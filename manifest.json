@@ -21,7 +21,7 @@
       "edge": "left",
       "layoutMode": "overlay",
       "overlayAlignment": "center",
-      "edgeRevealEnabled": true,
+      "openTrigger": "hover",
       "edgeRevealDelayMs": 250,
       "openAnimationEnabled": true,
       "transparentBackground": false
@@ -52,11 +52,12 @@
         "defaultValue": "center"
       },
       {
-        "key": "edgeRevealEnabled",
-        "type": "boolean",
-        "label": "Reveal at screen edge",
-        "description": "Open Side Panel when the pointer rests at its configured edge.",
-        "defaultValue": true
+        "key": "openTrigger",
+        "type": "enum",
+        "label": "Open from screen edge",
+        "description": "Choose whether to open the Side Panel by double-clicking its edge, hovering at its edge, or not at all.",
+        "options": ["double-click", "hover", "none"],
+        "defaultValue": "hover"
       },
       {
         "key": "edgeRevealDelayMs",

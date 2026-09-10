@@ -126,6 +126,8 @@ function parseState(raw, defaults, resolveId) {
     if (["overlay", "reserve"].indexOf(state.layoutMode) >= 0) normalized.layoutMode = state.layoutMode
     if (["left", "center", "right", "top", "bottom"].indexOf(state.overlayAlignment) >= 0)
       normalized.overlayAlignment = state.overlayAlignment
+    if (["double-click", "hover", "none"].indexOf(state.openTrigger) >= 0)
+      normalized.openTrigger = state.openTrigger
     if (typeof state.edgeRevealEnabled === "boolean") normalized.edgeRevealEnabled = state.edgeRevealEnabled
     if (state.edgeRevealDelayMs !== undefined)
       normalized.edgeRevealDelayMs = boundedInteger(state.edgeRevealDelayMs, 250, 0, 2000)
@@ -204,6 +206,77 @@ function copyPages(pages) {
   return result
 }
 
+function parseJsonArray(raw) {
+  try {
+    var parsed = JSON.parse(String(raw || ""))
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    return []
+  }
+}
+
+function pluginIdOf(entry) {
+  if (typeof entry === "string") return boundedString(entry, MAX_ITEM_ID_LENGTH)
+  if (entry && typeof entry === "object") return boundedString(entry.id, MAX_ITEM_ID_LENGTH)
+  return ""
+}
+
+function enableInConfig(config, id, firstParty) {
+  if (!config || typeof config !== "object") return false
+  var pluginId = boundedString(id, MAX_ITEM_ID_LENGTH)
+  if (pluginId === "" || pluginId === "gshulga.side-panel") return false
+  var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
+  config.disabledPlugins = disabled.filter(function(entry) { return String(entry) !== pluginId })
+  if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+  if (firstParty) return true
+  if (!Array.isArray(config.plugins)) config.plugins = []
+  for (var index = 0; index < config.plugins.length; index++)
+    if (pluginIdOf(config.plugins[index]) === pluginId) return true
+  config.plugins.push({ id: pluginId })
+  return true
+}
+
+function pluginCatalogFromPublicSources(listRaw, catalogRaw) {
+  var list = parseJsonArray(listRaw)
+  var catalog = parseJsonArray(catalogRaw)
+  var extras = ({})
+  for (var catalogIndex = 0; catalogIndex < catalog.length; catalogIndex++) {
+    var extra = catalog[catalogIndex]
+    if (!extra || typeof extra !== "object") continue
+    var extraId = boundedString(extra.id, MAX_ITEM_ID_LENGTH)
+    if (extraId === "") continue
+    extras[extraId] = extra
+  }
+  var result = []
+  var seen = ({})
+  for (var listIndex = 0; listIndex < list.length; listIndex++) {
+    var row = list[listIndex]
+    if (!row || typeof row !== "object") continue
+    var id = boundedString(row.id, MAX_ITEM_ID_LENGTH)
+    if (id === "" || id === "gshulga.side-panel" || seen[id]) continue
+    seen[id] = true
+    var manifest = extras[id] || ({})
+    var entryPoints = manifest.entryPoints && typeof manifest.entryPoints === "object"
+      ? manifest.entryPoints : ({})
+    result.push({
+      id: id,
+      name: boundedString(manifest.name || row.name, MAX_ITEM_LABEL_LENGTH),
+      description: boundedString(manifest.description, 400),
+      enabled: row.enabled === true,
+      firstParty: manifest.firstParty === true || row.firstParty === true,
+      kinds: Array.isArray(manifest.kinds) ? manifest.kinds
+        : (Array.isArray(row.kinds) ? row.kinds : []),
+      entryPoints: entryPoints,
+      __sourceDir: boundedString(manifest.sourceDir, 1024),
+      __isFirstParty: manifest.firstParty === true || row.firstParty === true
+    })
+  }
+  result.sort(function(left, right) {
+    return String(left.name || left.id).localeCompare(String(right.name || right.id))
+  })
+  return result
+}
+
 function persistedEntry(settings, pages) {
   var entry = ({ id: "gshulga.side-panel" })
   var source = settings || ({})
@@ -211,6 +284,8 @@ function persistedEntry(settings, pages) {
   if (["overlay", "reserve"].indexOf(source.layoutMode) >= 0) entry.layoutMode = source.layoutMode
   if (["left", "center", "right", "top", "bottom"].indexOf(source.overlayAlignment) >= 0)
     entry.overlayAlignment = source.overlayAlignment
+  if (["double-click", "hover", "none"].indexOf(source.openTrigger) >= 0)
+    entry.openTrigger = source.openTrigger
   if (typeof source.edgeRevealEnabled === "boolean") entry.edgeRevealEnabled = source.edgeRevealEnabled
   if (source.edgeRevealDelayMs !== undefined)
     entry.edgeRevealDelayMs = boundedInteger(source.edgeRevealDelayMs, 250, 0, 2000)

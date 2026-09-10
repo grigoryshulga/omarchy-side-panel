@@ -52,6 +52,10 @@ class AdapterTests(unittest.TestCase):
             (source / "BarWidget.qml").write_text("// KeyboardPanel {\nItem {}\n")
             (source / "Panel.qml").write_text(PANEL)
             self.assertEqual(adapter.choose_source(source, "BarWidget.qml").name, "Panel.qml")
+            self.assertEqual(
+                adapter.choose_source(source, ["Missing.qml", "BarWidget.qml"]).name,
+                "Panel.qml",
+            )
 
     def test_rejects_custom_windows_and_ambiguous_hosts(self):
         with self.assertRaisesRegex(adapter.AdaptationError, "mapped surface"):

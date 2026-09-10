@@ -95,8 +95,14 @@ Item {
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
-  readonly property bool edgeRevealConfigured: setting("edgeRevealEnabled", true) === true
+  readonly property string openTrigger: {
+    var configured = String(setting("openTrigger", "")).toLowerCase()
+    if (["double-click", "hover", "none"].indexOf(configured) >= 0) return configured
+    return setting("edgeRevealEnabled", true) === true ? "hover" : "double-click"
+  }
+  readonly property bool edgeRevealConfigured: openTrigger === "hover"
   readonly property bool edgeRevealEnabled: !!anchorWindow && edgeRevealConfigured
+  readonly property bool edgeDoubleClickEnabled: !!anchorWindow && openTrigger === "double-click"
   readonly property int edgeRevealDelayMs: SidePanelModel.boundedInteger(
     setting("edgeRevealDelayMs", 250), 250, 0, 2000
   )
@@ -190,6 +196,22 @@ Item {
   property string statePath: stateBase === "" ? "" : stateBase + "/omarchy/gshulga.side-panel.json"
   readonly property int pluginRegistryRevision: bar && bar.shell && bar.shell.pluginRegistry
     ? Number(bar.shell.pluginRegistry.registryRevision || 0) : 0
+  property var pluginCatalog: []
+  property string pluginListText: ""
+  property string pluginManifestText: ""
+  property int pluginCatalogRevision: 0
+  property int pluginCatalogRequest: 0
+  property int pluginListGeneration: 0
+  property int pluginManifestGeneration: 0
+  property string pluginEnableId: ""
+  property bool pluginEnableFirstParty: false
+  property var hostedPluginIds: ({})
+  readonly property string shellConfigPath: {
+    var configured = String(Quickshell.env("XDG_CONFIG_HOME") || "")
+    if (configured.charAt(0) === "/") return configured.replace(/\/+$/, "") + "/omarchy/shell.json"
+    var home = String(Quickshell.env("HOME") || "")
+    return home.charAt(0) === "/" ? home.replace(/\/+$/, "") + "/.config/omarchy/shell.json" : ""
+  }
   readonly property var availablePlugins: discoverAvailablePlugins()
 
   function absoluteXdgBase(environmentName, homeSuffix) {
@@ -616,9 +638,10 @@ Item {
     if (["overlay", "reserve"].indexOf(requestedMode) >= 0) state.layoutMode = requestedMode
     if (["left", "center", "right", "top", "bottom"].indexOf(requestedAlignment) >= 0)
       state.overlayAlignment = requestedAlignment
-    var requestedRevealEnabled = overrides && overrides.edgeRevealEnabled !== undefined
-      ? overrides.edgeRevealEnabled : setting("edgeRevealEnabled", true)
-    if (typeof requestedRevealEnabled === "boolean") state.edgeRevealEnabled = requestedRevealEnabled
+    var requestedOpenTrigger = overrides && overrides.openTrigger !== undefined
+      ? String(overrides.openTrigger) : openTrigger
+    if (["double-click", "hover", "none"].indexOf(requestedOpenTrigger) >= 0)
+      state.openTrigger = requestedOpenTrigger
     var requestedRevealDelay = overrides && overrides.edgeRevealDelayMs !== undefined
       ? overrides.edgeRevealDelayMs : setting("edgeRevealDelayMs", 250)
     state.edgeRevealDelayMs = SidePanelModel.boundedInteger(requestedRevealDelay, 250, 0, 2000)
@@ -695,7 +718,7 @@ Item {
     var entry = SidePanelModel.persistedEntry(settings, state.pages)
     var names = [
       "edge", "edgeSize", "overlayCrossSize", "overlayAlignment", "layoutMode",
-      "edgeRevealEnabled", "edgeRevealDelayMs", "openAnimationEnabled"
+      "openTrigger", "edgeRevealDelayMs", "openAnimationEnabled"
     ]
     for (var index = 0; index < names.length; index++)
       if (state[names[index]] !== undefined) entry[names[index]] = state[names[index]]
@@ -800,20 +823,13 @@ Item {
   function setExpanded(id) {
     var index = itemIndex(id)
     if (index >= 0) keyboardPluginIndex = index
-    if (expandedId === id) {
-      deactivateActivePanels()
-      expandedId = ""
-      return
-    }
-    deactivateActivePanels()
-    expandedId = id
+    expandedId = expandedId === id ? "" : id
   }
 
   function setEditing(value) {
     if (editing === value) return
     cancelDrag()
     cancelResize()
-    deactivateActivePanels()
     editing = value
     renamingPage = false
     resizingId = ""
@@ -822,7 +838,6 @@ Item {
     catalogOpen = false
     settingsOpen = false
     shortcutsOpen = false
-    panelEpoch += 1
   }
 
   function panelHeight(item) {
@@ -958,13 +973,29 @@ Item {
     persistItems(SidePanelModel.move(pluginItems, sourceId, targetId, after))
   }
 
+  function refreshPluginCatalog() {
+    if (pluginListProcess.running || pluginCatalogProcess.running) return
+    pluginCatalogRequest += 1
+    pluginListProcess.command = ["/usr/share/omarchy/bin/omarchy", "plugin", "list", "--json"]
+    pluginCatalogProcess.command = ["/usr/share/omarchy/bin/omarchy-plugin-catalog"]
+    pluginListProcess.running = true
+    pluginCatalogProcess.running = true
+  }
+
+  function applyPluginCatalog() {
+    if (pluginListGeneration !== pluginCatalogRequest || pluginManifestGeneration !== pluginCatalogRequest)
+      return
+    pluginCatalog = SidePanelModel.pluginCatalogFromPublicSources(pluginListText, pluginManifestText)
+    pluginCatalogRevision += 1
+  }
+
   function addPlugin(id) {
     id = resolvedPluginId({ id: id })
     if (id === "" || hasPlugin(id) || sidePanelItemLimitReached || sidePanelPageItemLimitReached
         || id === "gshulga.side-panel") return
     var manifest = pluginFor(id)
     if (!manifest) return
-    if (!enablePluginForSidePanel(id, manifest)) return
+    enablePluginForSidePanel(id, manifest)
     var next = copyItems(pluginItems)
     next.push({
       id: id,
@@ -980,35 +1011,55 @@ Item {
 
   function enablePluginForSidePanel(id, manifest) {
     if (pluginEnabled({ id: id })) return true
-    if (!bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return false
-    try {
-      bar.shell.mutateShellConfig(function(config) {
-        var disabled = Array.isArray(config.disabledPlugins) ? config.disabledPlugins : []
-        config.disabledPlugins = disabled.filter(function(entry) { return String(entry) !== id })
-        if (config.disabledPlugins.length === 0) delete config.disabledPlugins
-        if (manifest.__isFirstParty) return
-        if (!Array.isArray(config.plugins)) config.plugins = []
-        for (var index = 0; index < config.plugins.length; index++)
-          if (config.plugins[index] && String(config.plugins[index].id) === id) return
-        config.plugins.push({ id: id })
-      })
-      return true
-    } catch (error) {
-      console.warn("SidePanel: cannot enable " + id + ":", error)
-      return false
+    var firstParty = !!(manifest && (manifest.__isFirstParty === true || manifest.firstParty === true))
+    if (firstParty) return true
+    if (shellConfigPath === "" || pluginEnableProcess.running) return false
+    pluginEnableId = id
+    pluginEnableFirstParty = firstParty
+    markHostedPlugin(id)
+    pluginEnableProcess.command = [
+      "/usr/bin/python3", "-I", pluginDir + "/bin/omarchy-side-panel-enable",
+      shellConfigPath, id, firstParty ? "true" : "false"
+    ]
+    pluginEnableProcess.running = true
+    return true
+  }
+
+  function catalogPlugin(id) {
+    var wanted = String(id || "")
+    if (wanted === "" || !Array.isArray(pluginCatalog)) return null
+    for (var index = 0; index < pluginCatalog.length; index++) {
+      if (pluginCatalog[index] && pluginCatalog[index].id === wanted) return pluginCatalog[index]
     }
+    return null
   }
 
   function pluginFor(id) {
+    var resolved = resolvedPluginId({ id: id })
+    var catalog = catalogPlugin(resolved)
+    if (catalog) return catalog
     if (!bar || !bar.shell || !bar.shell.pluginRegistry) return null
     var registry = bar.shell.pluginRegistry
-    var resolved = typeof registry.resolveEnabledId === "function" ? registry.resolveEnabledId(id) : id
     return registry.installedPlugins ? registry.installedPlugins[resolved] : null
   }
 
+  function markHostedPlugin(id) {
+    var wanted = String(id || "")
+    if (wanted === "" || hostedPluginIds[wanted]) return
+    var next = ({})
+    for (var key in hostedPluginIds) next[key] = true
+    next[wanted] = true
+    hostedPluginIds = next
+  }
+
   function pluginEnabled(item) {
-    if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return false
-    return bar.shell.pluginRegistry.isEnabled(resolvedPluginId(item))
+    if (!item) return false
+    var id = resolvedPluginId(item)
+    if (hostedPluginIds[id]) return true
+    var catalog = catalogPlugin(id)
+    if (catalog) return catalog.__isFirstParty === true || catalog.enabled === true
+    if (!bar || !bar.shell || !bar.shell.pluginRegistry) return false
+    return bar.shell.pluginRegistry.isEnabled(id)
   }
 
   function resolvedPluginId(item) {
@@ -1016,8 +1067,9 @@ Item {
     var id = String(item.id || "")
     if (id === "" || !bar || !bar.shell || !bar.shell.pluginRegistry) return id
     var registry = bar.shell.pluginRegistry
-    return typeof registry.resolveEnabledId === "function"
-      ? registry.resolveEnabledId(id) : id
+    if (typeof registry.resolveEnabledId !== "function") return id
+    var resolved = String(registry.resolveEnabledId(id) || "")
+    return resolved !== "" ? resolved : id
   }
 
   function pluginLabel(item) {
@@ -1032,35 +1084,36 @@ Item {
   }
 
   function discoverAvailablePlugins() {
-    var revision = pluginRegistryRevision
-    if (!bar || !bar.shell || !bar.shell.pluginRegistry) return []
-    var plugins = bar.shell.pluginRegistry.installedPlugins || ({})
+    var revision = pluginCatalogRevision
+    var plugins = Array.isArray(pluginCatalog) ? pluginCatalog : []
     var entries = []
     var seen = ({})
-    for (var id in plugins) {
-      var resolvedId = resolvedPluginId({ id: id })
-      if (resolvedId === "gshulga.side-panel" || hasPlugin(resolvedId) || seen[resolvedId]) continue
+    for (var index = 0; index < plugins.length; index++) {
+      var plugin = plugins[index]
+      if (!plugin) continue
+      var resolvedId = resolvedPluginId({ id: plugin.id })
+      if (resolvedId === "" || resolvedId === "gshulga.side-panel" || hasPlugin(resolvedId) || seen[resolvedId])
+        continue
       seen[resolvedId] = true
-      var manifest = pluginFor(resolvedId)
-      if (!manifest) continue
       entries.push({
         id: resolvedId,
-        label: String(manifest.name || resolvedId),
-        description: String(manifest.description || ""),
-        enabled: bar.shell.pluginRegistry.isEnabled(resolvedId)
+        label: String(plugin.name || resolvedId),
+        description: String(plugin.description || ""),
+        enabled: pluginEnabled({ id: resolvedId })
       })
     }
-    entries.sort(function(a, b) { return a.label.localeCompare(b.label) })
     return entries
   }
 
   function sidePanelPageUrl(item) {
-    if (!item || !bar || !bar.shell || !bar.shell.pluginRegistry) return ""
-    if (!pluginEnabled(item)) return ""
-    var registry = bar.shell.pluginRegistry
+    if (!item || !pluginEnabled(item)) return ""
     var manifest = pluginFor(item.id)
     if (!manifest || !manifest.entryPoints || !manifest.entryPoints.sidePanelPage) return ""
-    return registry.entryPointUrl(manifest, "sidePanelPage")
+    var directory = String(manifest.__sourceDir || "")
+    var entry = String(manifest.entryPoints.sidePanelPage || "")
+    if (directory.charAt(0) !== "/" || entry === "" || entry.charAt(0) === "/" || entry.indexOf("..") >= 0)
+      return ""
+    return "file://" + directory.replace(/\/$/, "") + "/" + entry
   }
 
   function adaptedUrl(item) {
@@ -1099,28 +1152,47 @@ Item {
     panelErrors = next
   }
 
+  function adaptationEntryPoints(manifest) {
+    var entries = manifest && manifest.entryPoints ? manifest.entryPoints : ({})
+    var names = ["panel", "overlay", "barWidget", "menu"]
+    var result = []
+    for (var index = 0; index < names.length; index++) {
+      var value = entries[names[index]]
+      if (typeof value === "string" && value.length > 0 && result.indexOf(value) < 0) result.push(value)
+    }
+    return result
+  }
+
   function canAdapt(item) {
     var manifest = item ? pluginFor(item.id) : null
-    return !!(cacheRoot !== "" && pluginEnabled(item) && manifest && manifest.entryPoints
-      && manifest.entryPoints.barWidget && manifest.__sourceDir)
+    return !!(cacheRoot !== "" && pluginEnabled(item) && manifest && manifest.__sourceDir
+      && adaptationEntryPoints(manifest).length > 0)
   }
 
   function adaptStandardPanel(item) {
     if (!item || !canAdapt(item) || adaptingId !== "" || adapter.running) return
     var id = resolvedPluginId(item)
     var manifest = pluginFor(item.id)
+    var candidates = adaptationEntryPoints(manifest)
     adaptingId = id
     adaptationTimedOutId = ""
     adaptationRegistryRevision = pluginRegistryRevision
     clearAdaptationError(id)
-    adapter.command = [
-      "/usr/bin/python3", "-I", pluginDir + "/lib/omarchy_side_panel_adapter.py", "--",
+    var command = [
+      "/usr/bin/python3", "-I", pluginDir + "/bin/omarchy-side-panel-run-helper",
+      "--max-bytes", "1048576", "--timeout-seconds", "15", "--",
+      "/usr/bin/python3", "-I", pluginDir + "/lib/omarchy_side_panel_adapter.py"
+    ]
+    for (var index = 1; index < candidates.length; index++)
+      command.push("--fallback-entry-point", candidates[index])
+    adapter.command = command.concat([
+      "--",
       String(manifest.__sourceDir),
-      String(manifest.entryPoints.barWidget),
+      String(candidates[0]),
       cacheRoot,
       id,
       pluginDir
-    ]
+    ])
     adapter.running = true
     adapterTimeout.restart()
   }
@@ -1179,6 +1251,7 @@ Item {
   }
 
   function handlePluginRegistryChange() {
+    refreshPluginCatalog()
     deactivateActivePanels("plugin-registry-change")
     resetPanelWarmup()
     adaptedUrls = ({})
@@ -1197,6 +1270,16 @@ Item {
     if (panelUrl(item) !== "") return
     if (canAdapt(item)) adaptStandardPanel(item)
     else launchFallback(item)
+  }
+
+  function restorePlugin(page) {
+    if (!page) return
+    try {
+      if (typeof page.open === "function" && "opened" in page && page.opened === false) page.open()
+      else if ("open" in page && page.open === false) page.open = true
+    } catch (error) {
+      console.warn("SidePanel: cannot restore plugin:", error)
+    }
   }
 
   function injectPanel(page, item) {
@@ -1272,7 +1355,8 @@ Item {
     try {
       page[name] = value
     } catch (error) {
-      console.warn("SidePanel: cannot inject " + name + ":", error)
+      if (String(error).indexOf("read-only property") < 0)
+        console.warn("SidePanel: cannot inject " + name + ":", error)
     }
   }
 
@@ -1312,18 +1396,7 @@ Item {
   }
 
   function panelClosed(page) {
-    if (closing || suppressPanelClose || !opened) return
-    var nextPanels = []
-    var wasActive = false
-    for (var i = 0; i < activePanels.length; i++) {
-      if (activePanels[i] === page) wasActive = true
-      else nextPanels.push(activePanels[i])
-    }
-    // Panel hosts report close asynchronously. A panel removed during edit or
-    // page navigation must not be mistaken for a user-requested sidePanel close.
-    if (!wasActive) return
-    activePanels = nextPanels
-    close()
+    removeActivePanel(page)
   }
 
   function armFocusDismissal() {
@@ -1435,7 +1508,9 @@ Item {
     sidePanelPages = pagesFromSettings()
     scheduleTransparentForegroundRefresh()
     loadSavedSidePanelState()
+    refreshPluginCatalog()
   }
+  onCatalogOpenChanged: if (catalogOpen) refreshPluginCatalog()
   onTransparentBackgroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentTextForegroundChanged: scheduleTransparentForegroundRefresh()
   onTransparentContrastForegroundChanged: scheduleTransparentForegroundRefresh()
@@ -1618,9 +1693,8 @@ Item {
       armFocusDismissal()
       currentPage = 0
       resetPanelWarmup()
-      adaptedUrls = ({})
-      adaptationErrors = ({})
       panelErrors = ({})
+      refreshPluginCatalog()
       enqueueAllPanelWarmups()
       adaptPreferredPanels()
     } else {
@@ -1661,6 +1735,111 @@ Item {
       root.openedToplevel = ToplevelManager.activeToplevel
       root.focusDismissalArmed = true
     }
+  }
+
+  Process {
+    id: pluginListProcess
+    stdout: StdioCollector {
+      id: pluginListOutput
+      waitForEnd: true
+    }
+    onStarted: pluginListTimeout.restart()
+    onExited: function(exitCode) {
+      pluginListTimeout.stop()
+      pluginListKillTimer.stop()
+      pluginListText = exitCode === 0 ? String(pluginListOutput.text || "") : "[]"
+      pluginListGeneration = root.pluginCatalogRequest
+      root.applyPluginCatalog()
+    }
+  }
+
+  Timer {
+    id: pluginListTimeout
+    interval: 5000
+    repeat: false
+    onTriggered: {
+      if (!pluginListProcess.running) return
+      pluginListProcess.running = false
+      pluginListKillTimer.restart()
+    }
+  }
+
+  Timer {
+    id: pluginListKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (pluginListProcess.running) pluginListProcess.signal(9)
+  }
+
+  Process {
+    id: pluginCatalogProcess
+    stdout: StdioCollector {
+      id: pluginCatalogOutput
+      waitForEnd: true
+    }
+    onStarted: pluginCatalogTimeout.restart()
+    onExited: function(exitCode) {
+      pluginCatalogTimeout.stop()
+      pluginCatalogKillTimer.stop()
+      pluginManifestText = exitCode === 0 ? String(pluginCatalogOutput.text || "") : "[]"
+      pluginManifestGeneration = root.pluginCatalogRequest
+      root.applyPluginCatalog()
+    }
+  }
+
+  Timer {
+    id: pluginCatalogTimeout
+    interval: 5000
+    repeat: false
+    onTriggered: {
+      if (!pluginCatalogProcess.running) return
+      pluginCatalogProcess.running = false
+      pluginCatalogKillTimer.restart()
+    }
+  }
+
+  Timer {
+    id: pluginCatalogKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (pluginCatalogProcess.running) pluginCatalogProcess.signal(9)
+  }
+
+  Process {
+    id: pluginEnableProcess
+    onStarted: pluginEnableTimeout.restart()
+    onExited: function(exitCode) {
+      pluginEnableTimeout.stop()
+      pluginEnableKillTimer.stop()
+      var id = root.pluginEnableId
+      root.pluginEnableId = ""
+      if (exitCode !== 0) {
+        console.warn("SidePanel: cannot enable " + id)
+        var next = ({})
+        for (var key in root.hostedPluginIds) if (key !== id) next[key] = true
+        root.hostedPluginIds = next
+      }
+      root.refreshPluginCatalog()
+      if (root.opened) Qt.callLater(root.adaptPreferredPanels)
+    }
+  }
+
+  Timer {
+    id: pluginEnableTimeout
+    interval: 8000
+    repeat: false
+    onTriggered: {
+      if (!pluginEnableProcess.running) return
+      pluginEnableProcess.running = false
+      pluginEnableKillTimer.restart()
+    }
+  }
+
+  Timer {
+    id: pluginEnableKillTimer
+    interval: 1000
+    repeat: false
+    onTriggered: if (pluginEnableProcess.running) pluginEnableProcess.signal(9)
   }
 
   Process {
@@ -1744,7 +1923,7 @@ Item {
     id: edgeRevealSurface
     objectName: "edgeRevealSurface"
     screen: root.sidePanelScreen
-    visible: !root.opened
+    visible: !root.opened && root.openTrigger !== "none"
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "gshulga-side-panel-edge-reveal"
@@ -1769,7 +1948,7 @@ Item {
         acceptedButtons: Qt.LeftButton
         onEntered: if (root.edgeRevealEnabled) root.startEdgeReveal()
         onExited: root.cancelEdgeReveal()
-        onDoubleClicked: root.open()
+        onDoubleClicked: if (root.edgeDoubleClickEnabled) root.open()
       }
     }
   }
@@ -2515,6 +2694,7 @@ Item {
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
               readonly property var plugin: modelData
+              onExpandedChanged: if (expanded && pageLoader.item) root.restorePlugin(pageLoader.item)
               width: root.verticalEdge
                 ? (!root.reservesSpace && Number(pluginRow.plugin.width) > 0 ? root.panelWidth(pluginRow.plugin) : pluginList.width)
                 : root.panelWidth(pluginRow.plugin)
@@ -2707,9 +2887,9 @@ Item {
                     asynchronous: true
                     active: root.opened
                       && !root.panelLoadFailed(pluginRow.plugin)
-                      && (!root.editing || pluginRow.expanded)
                       && root.warmedPanelIds.indexOf(root.resolvedPluginId(pluginRow.plugin)) >= 0
                       && root.panelUrl(pluginRow.plugin) !== ""
+                    enabled: pluginRow.expanded
                     source: root.panelSource(pluginRow.plugin)
                     onLoaded: {
                       root.clearPanelError(pluginRow.plugin)
@@ -3042,7 +3222,7 @@ Item {
       overlayAlignment: root.overlayAlignment
       foreground: root.chromeForeground
       resizeMode: root.panelResizeMode
-      edgeRevealEnabled: root.edgeRevealConfigured
+      openTrigger: root.openTrigger
       edgeRevealDelayMs: root.edgeRevealDelayMs
       openAnimationEnabled: root.openAnimationEnabled
       onCloseRequested: root.settingsOpen = false

@@ -384,19 +384,26 @@ def read_entry_point(source: Path) -> str:
         raise AdaptationError("entry point is not valid UTF-8") from error
 
 
-def choose_source(source_dir: Path, entry_point: str) -> Path:
-    entry = Path(entry_point)
-    if entry.is_absolute() or ".." in entry.parts:
-        raise AdaptationError("entry point is outside its plugin directory")
-    candidate = (source_dir / entry).resolve()
-    if not candidate.is_file() or source_dir not in candidate.parents:
-        raise AdaptationError("entry point is outside its plugin directory")
-    source = candidate
-    if not has_standard_host(read_entry_point(source)):
+def choose_source(source_dir: Path, entry_points: str | list[str]) -> Path:
+    candidates = [entry_points] if isinstance(entry_points, str) else list(entry_points)
+    last_error = "entry point is outside its plugin directory"
+    for entry_point in candidates:
+        entry = Path(entry_point)
+        if entry.is_absolute() or ".." in entry.parts:
+            last_error = "entry point is outside its plugin directory"
+            continue
+        candidate = (source_dir / entry).resolve()
+        if not candidate.is_file() or source_dir not in candidate.parents:
+            last_error = "entry point is outside its plugin directory"
+            continue
+        source = candidate
+        if has_standard_host(read_entry_point(source)):
+            return source
         sibling = (candidate.parent / "Panel.qml").resolve()
-        if sibling.is_file() and source_dir in sibling.parents:
-            source = sibling
-    return source
+        if sibling.is_file() and source_dir in sibling.parents and has_standard_host(read_entry_point(sibling)):
+            return sibling
+        last_error = "entry point does not expose a standard Omarchy panel"
+    raise AdaptationError(last_error)
 
 
 def has_standard_host(source: str) -> bool:
@@ -635,7 +642,7 @@ def completed_artifact(destination: Path, generated_source: Path, fingerprint: s
         return False
 
 
-def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, adapter_dir: Path) -> Path:
+def build(source_dir: Path, entry_point: str | list[str], cache_root: Path, plugin_id: str, adapter_dir: Path) -> Path:
     source_dir = source_dir.resolve()
     adapter_dir = adapter_dir.resolve()
     cache_root = Path(cache_root)
@@ -721,6 +728,7 @@ def build(source_dir: Path, entry_point: str, cache_root: Path, plugin_id: str, 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fallback-entry-point", action="append", default=[])
     parser.add_argument("source_dir")
     parser.add_argument("entry_point")
     parser.add_argument("cache_root")
@@ -730,7 +738,7 @@ def main() -> int:
     try:
         output = build(
             Path(arguments.source_dir),
-            arguments.entry_point,
+            [arguments.entry_point, *arguments.fallback_entry_point],
             Path(arguments.cache_root),
             arguments.plugin_id,
             Path(arguments.adapter_dir),

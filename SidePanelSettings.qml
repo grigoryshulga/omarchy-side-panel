@@ -12,13 +12,20 @@ Item {
   property string overlayAlignment: "center"
   property color foreground: Color.popups.text
   property bool resizeMode: false
-  property bool edgeRevealEnabled: true
+  property string openTrigger: "hover"
   property int edgeRevealDelayMs: 250
   property bool openAnimationEnabled: true
+  property bool openTriggerMenuOpen: false
 
   signal closeRequested()
   signal settingRequested(string name, var value)
   signal resizeModeRequested(bool enabled)
+
+  function openTriggerLabel(value) {
+    if (value === "double-click") return "Double-click screen edge"
+    if (value === "none") return "Don't open from screen edge"
+    return "Hover at screen edge"
+  }
 
   visible: false
 
@@ -258,37 +265,128 @@ Item {
         }
       }
 
+      Text { text: "OPENING"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+
       Row {
         width: parent.width
-        height: Math.max(revealLabel.implicitHeight, revealToggle.implicitHeight)
+        height: Math.max(openTriggerLabel.implicitHeight, openTriggerSelector.height)
+        Row {
+          id: openTriggerLabel
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(7)
+          Text { text: "\uf0a9"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Open from screen edge"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+        }
+        Rectangle {
+          id: openTriggerSelector
+          objectName: "openTriggerSelector"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          width: Math.min(Math.round(Style.space(230)), parent.width - openTriggerLabel.width - Style.space(16))
+          height: Math.round(Style.space(36))
+          radius: Style.cornerRadius
+          color: openTriggerMouse.containsMouse
+            ? Style.hoverFillFor(root.foreground, Color.accent)
+            : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+          Text {
+            anchors.left: parent.left
+            anchors.right: openTriggerChevron.left
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(6)
+            text: root.openTriggerLabel(root.openTrigger)
+            color: root.foreground
+            elide: Text.ElideRight
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+          Text {
+            id: openTriggerChevron
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.openTriggerMenuOpen ? "\uf0d8" : "\uf0d7"
+            color: root.foreground
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+          MouseArea {
+            id: openTriggerMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openTriggerMenuOpen = !root.openTriggerMenuOpen
+          }
+        }
+      }
+
+      Rectangle {
+        id: openTriggerMenu
+        objectName: "openTriggerListbox"
+        visible: root.openTriggerMenuOpen
+        width: parent.width
+        height: visible ? openTriggerOptions.implicitHeight + Style.space(8) : 0
+        radius: Style.cornerRadius
+        color: Color.popups.background
+        border.width: 1
+        border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16)
+        clip: true
+        Column {
+          id: openTriggerOptions
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.margins: Style.space(4)
+          spacing: Style.space(2)
+          Repeater {
+            model: [
+              { value: "double-click", label: "Double-click screen edge" },
+              { value: "hover", label: "Hover at screen edge" },
+              { value: "none", label: "Don't open from screen edge" }
+            ]
+            delegate: Rectangle {
+              required property var modelData
+              width: openTriggerOptions.width
+              height: Math.round(Style.space(34))
+              radius: Style.cornerRadius
+              color: openTriggerOptionMouse.containsMouse || root.openTrigger === modelData.value
+                ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+              Text {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: Style.space(8)
+                text: modelData.label
+                color: root.foreground
+                elide: Text.ElideRight
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+              MouseArea {
+                id: openTriggerOptionMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.settingRequested("openTrigger", modelData.value)
+                  root.openTriggerMenuOpen = false
+                }
+              }
+            }
+          }
+        }
+      }
+
+      Row {
+        visible: root.openTrigger === "hover"
+        width: parent.width
+        height: visible ? Math.max(revealLabel.implicitHeight, delayControl.implicitHeight) : 0
         Row {
           id: revealLabel
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(7)
-          Text { text: "\uf06e"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-          Text { text: "Reveal at screen edge"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
-        }
-        ToggleSwitch {
-          id: revealToggle
-          objectName: "edgeRevealEnabledControl"
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          checked: root.edgeRevealEnabled
-          foreground: root.foreground
-          onToggled: root.settingRequested("edgeRevealEnabled", !root.edgeRevealEnabled)
-        }
-      }
-
-      Row {
-        width: parent.width
-        height: Math.max(delayLabel.implicitHeight, delayControl.implicitHeight)
-        Row {
-          id: delayLabel
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(7)
-          opacity: root.edgeRevealEnabled ? 1 : 0.5
           Text { text: "\uf017"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
           Text { text: "Reveal delay"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
         }
@@ -298,7 +396,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: "ms"
           color: root.foreground
-          opacity: root.edgeRevealEnabled ? 0.7 : 0.35
+          opacity: 0.7
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
         }
@@ -312,8 +410,6 @@ Item {
           to: 2000
           stepSize: 50
           foreground: root.foreground
-          enabled: root.edgeRevealEnabled
-          opacity: enabled ? 1 : 0.5
           onModified: function(value) { root.settingRequested("edgeRevealDelayMs", value) }
         }
       }

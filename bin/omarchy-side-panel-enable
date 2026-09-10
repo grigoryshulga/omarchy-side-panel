@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Enable a plugin for Side Panel without placing it on the bar."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import stat
+import sys
+
+
+TOO_LARGE = 2
+UNSAFE = 3
+IO_ERROR = 4
+MAX_CONFIG_BYTES = 256 * 1024
+PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+RESERVED_IDS = {"__proto__", "prototype", "constructor", "gshulga.side-panel"}
+
+
+def fail(code: int, message: str) -> int:
+    sys.stderr.write(f"omarchy-side-panel-enable: {message}\n")
+    return code
+
+
+def checked_parent(path: str) -> tuple[int, str]:
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        raise ValueError("config path must be absolute and normalized")
+    parent, name = os.path.split(path)
+    if not name:
+        raise ValueError("config path has no filename")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(parent, flags)
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid():
+        os.close(descriptor)
+        raise ValueError("config directory is not owned by the current user")
+    if stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH):
+        os.close(descriptor)
+        raise ValueError("config directory is writable by another user")
+    return descriptor, name
+
+
+def read_config(parent_descriptor: int, name: str) -> bytes:
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise ValueError("config is not a user-owned regular file")
+        if stat.S_IMODE(metadata.st_mode) & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ValueError("config is writable by another user")
+        if metadata.st_size > MAX_CONFIG_BYTES:
+            raise OverflowError("config exceeds maximum size")
+        chunks: list[bytes] = []
+        remaining = MAX_CONFIG_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        content = b"".join(chunks)
+        if len(content) > MAX_CONFIG_BYTES:
+            raise OverflowError("config exceeds maximum size")
+        return content
+    finally:
+        os.close(descriptor)
+
+
+def temporary_file(parent_descriptor: int) -> tuple[int, str]:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    for _ in range(32):
+        name = ".gshulga.side-panel.enable.%s.tmp" % secrets.token_hex(16)
+        try:
+            return os.open(name, flags, 0o600, dir_fd=parent_descriptor), name
+        except FileExistsError:
+            continue
+    raise OSError("could not create a unique config temporary file")
+
+
+def plugin_id_of(entry: object) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return str(entry.get("id") or "")
+    return ""
+
+
+def enable_in_config(config: dict, plugin_id: str, first_party: bool) -> dict:
+    disabled = config.get("disabledPlugins")
+    if isinstance(disabled, list):
+        next_disabled = [entry for entry in disabled if str(entry) != plugin_id]
+        if next_disabled:
+            config["disabledPlugins"] = next_disabled
+        else:
+            config.pop("disabledPlugins", None)
+    if first_party:
+        return config
+    plugins = config.get("plugins")
+    if not isinstance(plugins, list):
+        plugins = []
+    for entry in plugins:
+        if plugin_id_of(entry) == plugin_id:
+            config["plugins"] = plugins
+            return config
+    plugins.append({"id": plugin_id})
+    config["plugins"] = plugins
+    return config
+
+
+def write_config(parent_descriptor: int, name: str, content: bytes) -> None:
+    descriptor, temporary_name = temporary_file(parent_descriptor)
+    try:
+        written = 0
+        while written < len(content):
+            count = os.write(descriptor, content[written:])
+            if count <= 0:
+                raise OSError("could not write config")
+            written += count
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.replace(temporary_name, name, src_dir_fd=parent_descriptor, dst_dir_fd=parent_descriptor)
+    os.fsync(parent_descriptor)
+
+
+def main() -> int:
+    if len(sys.argv) != 4:
+        return fail(IO_ERROR, "usage: omarchy-side-panel-enable <shell.json> <plugin-id> <first-party>")
+    path, plugin_id, first_party_flag = sys.argv[1], sys.argv[2], sys.argv[3]
+    if not PLUGIN_ID.fullmatch(plugin_id) or plugin_id in RESERVED_IDS:
+        return fail(UNSAFE, "plugin id is unsafe")
+    first_party = first_party_flag == "true"
+    parent_descriptor = -1
+    try:
+        parent_descriptor, name = checked_parent(path)
+        raw = read_config(parent_descriptor, name)
+        config = json.loads(raw.decode("utf-8"))
+        if not isinstance(config, dict) or config.get("version") != 1:
+            raise ValueError("shell.json is not a version 1 object")
+        before = json.dumps(config, sort_keys=True)
+        enable_in_config(config, plugin_id, first_party)
+        after = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
+        if json.dumps(config, sort_keys=True) == before:
+            return 0
+        encoded = after.encode("utf-8")
+        if len(encoded) > MAX_CONFIG_BYTES:
+            raise OverflowError("config exceeds maximum size")
+        write_config(parent_descriptor, name, encoded)
+        return 0
+    except OverflowError:
+        return fail(TOO_LARGE, "shell.json exceeds the size limit")
+    except (ValueError, json.JSONDecodeError, UnicodeError) as error:
+        return fail(UNSAFE, str(error))
+    except OSError as error:
+        return fail(IO_ERROR, str(error))
+    finally:
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

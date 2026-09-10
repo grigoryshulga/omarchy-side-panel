@@ -61,6 +61,28 @@ TestCase {
     sidePanel = null
   }
 
+  function test_available_plugins_use_public_catalog_not_scoped_registry() {
+    compare(sidePanel.availablePlugins.length, 0)
+    sidePanel.pluginCatalog = [
+      {
+        id: "omarchy.clock",
+        name: "Clock",
+        description: "Time",
+        enabled: true,
+        __isFirstParty: true,
+        entryPoints: ({ barWidget: "BarWidget.qml" }),
+        __sourceDir: "/usr/share/omarchy/shell/plugins/panels/clock"
+      },
+      { id: "gshulga.side-panel", name: "Side Panel", enabled: true },
+      { id: "fixture", name: "Already added", enabled: true }
+    ]
+    compare(sidePanel.availablePlugins.length, 1)
+    compare(sidePanel.availablePlugins[0].id, "omarchy.clock")
+    compare(sidePanel.availablePlugins[0].label, "Clock")
+    verify(sidePanel.pluginFor("omarchy.clock") !== null)
+    verify(sidePanel.pluginEnabled({ id: "omarchy.clock" }))
+  }
+
   function test_settings_change_reactivates_embedded_panels() {
     var epoch = sidePanel.panelEpoch
     sidePanel.settings = { edge: "right", layoutMode: "overlay", pages: [fixturePage] }
@@ -120,10 +142,25 @@ TestCase {
     compare(sidePanel.edgeRevealDelayMs, 0)
   }
 
-  function test_edge_reveal_controls_are_available_in_side_panel_settings() {
-    verify(findChild(sidePanel, "edgeRevealEnabledControl") !== null)
+  function test_edge_opening_controls_are_available_in_side_panel_settings() {
+    verify(findChild(sidePanel, "openTriggerSelector") !== null)
     verify(findChild(sidePanel, "edgeRevealDelayControl") !== null)
     verify(findChild(sidePanel, "openAnimationEnabledControl") !== null)
+  }
+
+  function test_edge_opening_can_be_disabled() {
+    sidePanel.close()
+    sidePanel.settings = {
+      edge: "left",
+      layoutMode: "overlay",
+      openTrigger: "none",
+      pages: [fixturePage]
+    }
+
+    compare(sidePanel.openTrigger, "none")
+    var edgeSurface = findChild(sidePanel, "edgeRevealSurface")
+    verify(edgeSurface !== null)
+    verify(!edgeSurface.visible)
   }
 
   function test_edge_double_click_target_remains_available_when_hover_reveal_is_disabled() {
@@ -425,18 +462,36 @@ TestCase {
     verify(!sidePanel.suppressPanelClose)
   }
 
-  function test_collapsed_item_is_recreated_when_expanded_again() {
+  function test_collapsed_item_stays_resident_when_expanded_again() {
     sidePanel.setEditing(true)
     tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
     var first = sidePanel.activePanels[0]
 
     sidePanel.setExpanded("fixture")
-    compare(sidePanel.activePanels.length, 0)
+    compare(sidePanel.activePanels.length, 1)
+    compare(sidePanel.activePanels[0], first)
     sidePanel.setExpanded("fixture")
 
-    tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
-    verify(sidePanel.activePanels[0] !== first)
+    compare(sidePanel.activePanels.length, 1)
+    compare(sidePanel.activePanels[0], first)
     verify(sidePanel.activePanels[0].activated)
+  }
+
+  function test_guest_panel_close_does_not_close_side_panel() {
+    tryVerify(function() { return sidePanel.activePanels.length === 1 }, 1000)
+    var page = sidePanel.activePanels[0]
+    page.close()
+    wait(20)
+    verify(sidePanel.opened)
+    compare(sidePanel.activePanels.length, 1)
+  }
+
+  function test_adaptation_cache_survives_close_and_reopen() {
+    var cached = sidePanel.adaptedUrls
+    sidePanel.close()
+    sidePanel.open()
+    compare(sidePanel.adaptedUrls.fixture, cached.fixture)
+    compare(sidePanel.adaptedUrls["fixture-two"], cached["fixture-two"])
   }
 
   function test_stale_state_reader_result_is_ignored() {
