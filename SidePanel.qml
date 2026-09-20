@@ -2518,294 +2518,88 @@ Item {
               }
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: settingsButton
               visible: !root.editing && (titleRowHover.hovered || root.settingsOpen)
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: settingsHover.containsMouse
-              width: expanded ? Math.round(Style.space(104)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              color: settingsHover.containsMouse
-                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text { text: "\uf013"; color: root.chromeForeground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-                Text {
-                  visible: settingsButton.expanded
-                  text: "Settings"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: settingsHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.shortcutsOpen = false
-                  root.settingsOpen = true
-                }
+              icon: "\uf013"
+              text: "Settings"
+              active: root.settingsOpen
+              foreground: root.chromeForeground
+              onClicked: {
+                root.shortcutsOpen = false
+                root.settingsOpen = true
               }
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: shortcutsButton
               objectName: "shortcutsButton"
               visible: !root.editing && (titleRowHover.hovered || root.shortcutsOpen)
               anchors.right: settingsButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: shortcutsHover.containsMouse
-              width: expanded ? Math.round(Style.space(112)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              color: shortcutsHover.containsMouse
-                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: "?"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-                Text {
-                  visible: shortcutsButton.expanded
-                  text: "Shortcuts"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: shortcutsHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.settingsOpen = false
-                  root.shortcutsOpen = true
-                }
+              icon: "?"
+              text: "Shortcuts"
+              active: root.shortcutsOpen
+              foreground: root.chromeForeground
+              onClicked: {
+                root.settingsOpen = false
+                root.shortcutsOpen = true
               }
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: editButton
               visible: titleRowHover.hovered || root.editing
               anchors.right: root.editing ? parent.right : pinButton.left
               anchors.rightMargin: root.editing ? 0 : Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: editHover.containsMouse
-              width: expanded ? Math.round(Style.space(82)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              color: root.editing
-                ? Style.selectedFillFor(root.chromeForeground, Color.accent)
-                : (editHover.containsMouse
-                  ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: root.editing ? "\uf00c" : "\uf044"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-                Text {
-                  visible: editButton.expanded
-                  text: root.editing ? "Done" : "Edit"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: editHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.setEditing(!root.editing)
-              }
+              icon: root.editing ? "\uf00c" : "\uf044"
+              text: root.editing ? "Done" : "Edit"
+              active: root.editing
+              foreground: root.chromeForeground
+              onClicked: root.setEditing(!root.editing)
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: addButton
               visible: root.editing
               anchors.right: editButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: addHover.containsMouse
-              width: expanded ? Math.round(Style.space(118)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              opacity: root.sidePanelItemLimitReached || root.sidePanelPageItemLimitReached ? 0.5 : 1
-              color: addHover.containsMouse
-                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: "+"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body
-                  font.bold: true
-                }
-                Text {
-                  visible: addButton.expanded
-                  text: "Add Plugin"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: addHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                enabled: !root.sidePanelItemLimitReached && !root.sidePanelPageItemLimitReached
-                onClicked: root.catalogOpen = true
-              }
+              enabled: !root.sidePanelItemLimitReached && !root.sidePanelPageItemLimitReached
+              icon: "+"
+              text: "Add Plugin"
+              foreground: root.chromeForeground
+              onClicked: root.catalogOpen = true
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: removePageButton
               visible: root.editing
               enabled: root.sidePanelPages.length > 1
               anchors.right: addButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: removePageHover.containsMouse
-              width: expanded ? Math.round(Style.space(126)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              opacity: enabled ? 1 : 0.42
-              color: removePageHover.containsMouse
-                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: "\uf1f8"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-                Text {
-                  visible: removePageButton.expanded
-                  text: "Remove page"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: removePageHover
-                anchors.fill: parent
-                enabled: removePageButton.enabled
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.removeCurrentPage()
-              }
+              icon: "\uf1f8"
+              text: "Remove page"
+              foreground: root.chromeForeground
+              onClicked: root.removeCurrentPage()
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: pinButton
               visible: !root.editing && (titleRowHover.hovered || root.pinned)
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              readonly property bool expanded: pinHover.containsMouse
-              width: expanded ? Math.round(Style.space(root.pinned ? 86 : 72)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              color: root.pinned
-                ? Style.selectedFillFor(root.chromeForeground, Color.accent)
-                : (pinHover.containsMouse
-                  ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                  : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: "\uf08d"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-                Text {
-                  visible: pinButton.expanded
-                  text: root.pinned ? "Unpin" : "Pin"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea {
-                id: pinHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.pinned = !root.pinned
-              }
+              icon: "\uf08d"
+              text: root.pinned ? "Unpin" : "Pin"
+              active: root.pinned
+              foreground: root.chromeForeground
+              onClicked: root.pinned = !root.pinned
             }
 
             HoverHandler { id: titleRowHover }
@@ -2959,7 +2753,7 @@ Item {
                   anchors.right: deleteButton.left
                   anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.round(Style.space(30))
+                  width: Math.round(Style.space(28))
                   height: width
                   radius: Style.cornerRadius > 0 ? height / 2 : 0
                   color: backgroundMouse.containsMouse
@@ -2999,50 +2793,15 @@ Item {
                   font.pixelSize: Style.font.subtitle
                 }
 
-                Rectangle {
+                SidePanelActionButton {
                   id: deleteButton
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
-                  readonly property bool expanded: deleteMouse.containsMouse
-                  width: expanded ? Math.round(Style.space(96)) : Math.round(Style.space(30))
-                  height: Math.round(Style.space(30))
-                  radius: Style.cornerRadius > 0 ? height / 2 : 0
-                  clip: true
-                  color: deleteMouse.containsMouse
-                    ? Style.hoverFillFor(root.foreground, Color.accent)
-                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-
-                  Behavior on width {
-                    NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-                  }
-
-                  Row {
-                    anchors.centerIn: parent
-                    spacing: Style.space(5)
-                    Text {
-                      text: "\uf1f8"
-                      color: root.foreground
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                    }
-                    Text {
-                      visible: deleteButton.expanded
-                      text: "Remove"
-                      color: root.foreground
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                    }
-                  }
-
-                  MouseArea {
-                    id: deleteMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.removePlugin(pluginRow.pluginId)
-                  }
-
+                  icon: "\uf1f8"
+                  text: "Remove"
+                  foreground: root.foreground
+                  onClicked: root.removePlugin(pluginRow.pluginId)
                 }
               }
 
@@ -3310,45 +3069,16 @@ Item {
               }
             }
 
-            Rectangle {
+            SidePanelActionButton {
               id: pageAdd
               visible: root.editing
               enabled: root.sidePanelPages.length < SidePanelModel.MAX_PAGES
-              opacity: enabled ? 1 : 0.42
               x: root.verticalEdge ? parent.width - width : (parent.width - width) / 2
               y: root.verticalEdge ? (parent.height - height) / 2 : parent.height - height
-              readonly property bool expanded: pageAddHover.containsMouse
-              width: expanded ? Math.round(Style.space(102)) : Math.round(Style.space(28))
-              height: Math.round(Style.space(28))
-              radius: Style.cornerRadius > 0 ? height / 2 : 0
-              clip: true
-              color: pageAddHover.containsMouse
-                ? Style.hoverFillFor(root.chromeForeground, Color.accent)
-                : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06)
-
-              Behavior on width {
-                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-              }
-
-              Row {
-                anchors.centerIn: parent
-                spacing: Style.space(5)
-                Text {
-                  text: "\uf067"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-                Text {
-                  visible: pageAdd.expanded
-                  text: "Add page"
-                  color: root.chromeForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              MouseArea { id: pageAddHover; anchors.fill: parent; enabled: pageAdd.enabled; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addPage() }
+              icon: "\uf067"
+              text: "Add page"
+              foreground: root.chromeForeground
+              onClicked: root.addPage()
             }
           }
         }

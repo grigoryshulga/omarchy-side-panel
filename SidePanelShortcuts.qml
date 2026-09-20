@@ -1,6 +1,5 @@
 import QtQuick
 import qs.Commons
-import qs.Ui
 
 Item {
   id: root
@@ -31,35 +30,14 @@ Item {
         font.bold: true
       }
 
-      Rectangle {
+      SidePanelActionButton {
         id: close
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        readonly property bool expanded: closeHover.containsMouse
-        width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
-        height: Math.round(Style.space(28))
-        radius: Style.cornerRadius > 0 ? height / 2 : 0
-        clip: true
-        color: closeHover.containsMouse
-          ? Style.hoverFillFor(root.foreground, Color.accent)
-          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-
-        Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-
-        Row {
-          anchors.centerIn: parent
-          spacing: Style.space(5)
-          Text { text: "\uf00d"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-          Text { visible: close.expanded; text: "Close"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-        }
-
-        MouseArea {
-          id: closeHover
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.closeRequested()
-        }
+        icon: "\uf00d"
+        text: "Close"
+        foreground: root.foreground
+        onClicked: root.closeRequested()
       }
     }
 
@@ -113,49 +91,58 @@ Item {
           ]
 
           delegate: Item {
+            id: shortcutRow
             required property var modelData
             width: list.width
-            height: modelData.section ? Math.round(Style.space(28))
-              : Math.max(Math.round(Style.space(34)), action.implicitHeight + Style.space(10))
+            height: shortcutRow.modelData.section ? Math.round(Style.space(28))
+              : Math.max(Math.round(Style.space(34)), action.implicitHeight + Style.space(8))
 
             Text {
-              visible: !!parent.modelData.section
+              visible: !!shortcutRow.modelData.section
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: parent.modelData.section || ""
+              text: shortcutRow.modelData.section || ""
               color: root.foreground
               opacity: 0.6
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
             }
 
-            Text {
-              id: keys
-              visible: !parent.modelData.section
+            Rectangle {
+              id: keysChip
+              visible: !shortcutRow.modelData.section
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               width: Math.min(Math.round(Style.space(174)), parent.width * 0.52)
-              text: parent.modelData.keys || ""
-              textFormat: Text.PlainText
-              elide: Text.ElideRight
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
+              height: Math.max(Math.round(Style.space(24)), parent.height - Style.space(8))
+              radius: Style.cornerRadius
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.07)
+              Text {
+                anchors.fill: parent
+                anchors.margins: Style.space(4)
+                text: shortcutRow.modelData.keys || ""
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                color: Color.accent
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
             }
 
             Text {
               id: action
-              visible: !parent.modelData.section
-              anchors.left: keys.right
+              visible: !shortcutRow.modelData.section
+              anchors.left: keysChip.right
               anchors.leftMargin: Style.space(10)
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              text: parent.modelData.action || ""
+              text: shortcutRow.modelData.action || ""
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
               color: root.foreground
-              opacity: 0.72
+              opacity: 0.78
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
             }

@@ -62,35 +62,14 @@ Item {
           font.bold: true
         }
 
-        Rectangle {
+        SidePanelActionButton {
           id: close
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          readonly property bool expanded: closeHover.containsMouse
-          width: expanded ? Math.round(Style.space(80)) : Math.round(Style.space(28))
-          height: Math.round(Style.space(28))
-          radius: Style.cornerRadius > 0 ? height / 2 : 0
-          clip: true
-          color: closeHover.containsMouse
-            ? Style.hoverFillFor(root.foreground, Color.accent)
-            : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-
-          Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-
-          Row {
-            anchors.centerIn: parent
-            spacing: Style.space(5)
-            Text { text: "\uf00d"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-            Text { visible: close.expanded; text: "Close"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-          }
-
-          MouseArea {
-            id: closeHover
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.closeRequested()
-          }
+          icon: "\uf00d"
+          text: "Close"
+          foreground: root.foreground
+          onClicked: root.closeRequested()
         }
       }
 
