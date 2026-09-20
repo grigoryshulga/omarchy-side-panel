@@ -3004,9 +3004,11 @@ Item {
             id: pageCarousel
             objectName: "pageCarousel"
             width: root.verticalEdge ? parent.width : Math.min(parent.width, Math.round(Style.space(160)))
-            height: root.verticalEdge ? Math.round(Style.space(26)) : parent.height
+            // On horizontal edges the tab column must clear the title toolbar,
+            // so it starts where the plugin list starts and runs to the bottom.
+            height: root.verticalEdge ? Math.round(Style.space(26)) : Math.max(0, parent.height - y)
             x: root.verticalEdge ? 0 : parent.width - width
-            y: root.verticalEdge ? parent.height - height : 0
+            y: root.verticalEdge ? parent.height - height : pageListHost.y
             color: "transparent"
 
             ListView {
