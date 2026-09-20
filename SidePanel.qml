@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "SidePanelModel.js" as SidePanelModel
+import "SidePanelAppearance.js" as SidePanelAppearance
 
 Item {
   id: root
@@ -91,7 +92,16 @@ Item {
     ? "reserve" : "overlay"
   readonly property bool verticalEdge: effectiveEdge === "left" || effectiveEdge === "right"
   readonly property bool reservesSpace: effectiveLayoutMode === "reserve"
-  readonly property bool transparentBackground: reservesSpace && bar && bar.transparent === true
+  readonly property string configuredSurfaceMode: SidePanelAppearance.surfaceMode(setting("surfaceMode", "Auto"))
+  readonly property bool autoGlassBackground: reservesSpace && bar && bar.transparent === true
+  readonly property bool glassSurface: SidePanelAppearance.usesGlass(configuredSurfaceMode, autoGlassBackground)
+  readonly property bool dimBackground: !reservesSpace && setting("dimBackground", false) === true
+  // A full-screen overlay surface cannot safely blur: the Hyprland rule would
+  // cover the whole screen. Only the reserved strip (whose surface matches the
+  // panel) gets a real blur; overlay Glass uses a translucent fill instead.
+  readonly property bool blurBackground: glassSurface && reservesSpace
+    && setting("blurBackground", true) === true
+  readonly property bool transparentBackground: glassSurface
   readonly property real overlayGap: reservesSpace ? 0 : Style.gapsOut
   readonly property string barPosition: bar ? String(bar.position || "top") : "top"
   readonly property real barInset: bar ? Number(bar.barSize || 0) : 0
@@ -659,6 +669,15 @@ Item {
     var requestedOpenAnimation = overrides && overrides.openAnimationEnabled !== undefined
       ? overrides.openAnimationEnabled : setting("openAnimationEnabled", true)
     if (typeof requestedOpenAnimation === "boolean") state.openAnimationEnabled = requestedOpenAnimation
+    var requestedSurfaceMode = overrides && overrides.surfaceMode !== undefined
+      ? overrides.surfaceMode : setting("surfaceMode", "Auto")
+    state.surfaceMode = SidePanelAppearance.surfaceMode(requestedSurfaceMode)
+    var requestedDimBackground = overrides && overrides.dimBackground !== undefined
+      ? overrides.dimBackground : setting("dimBackground", false)
+    if (typeof requestedDimBackground === "boolean") state.dimBackground = requestedDimBackground
+    var requestedBlurBackground = overrides && overrides.blurBackground !== undefined
+      ? overrides.blurBackground : setting("blurBackground", true)
+    if (typeof requestedBlurBackground === "boolean") state.blurBackground = requestedBlurBackground
     var requestedEdgeSize = overrides && overrides.edgeSize !== undefined
       ? overrides.edgeSize : setting("edgeSize", 0)
     requestedEdgeSize = SidePanelModel.normalizedExtent(requestedEdgeSize, SidePanelModel.MAX_EDGE_SIZE)
@@ -2337,6 +2356,18 @@ Item {
     Shortcut { sequence: "Alt+Ctrl+Left"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "width") }
     Shortcut { sequence: "Alt+Ctrl+H"; enabled: root.opened && root.editing && (!root.verticalEdge || !root.reservesSpace); context: Qt.WindowShortcut; onActivated: root.resizeFocusedPlugin(-1, "width") }
 
+    // Desktop dim behind the floating panel. Only meaningful for the overlay
+    // surface; Reserve Space contracts the surface to the panel strip.
+    Rectangle {
+      id: dimScrim
+      anchors.fill: parent
+      z: 0
+      visible: root.dimBackground
+      color: root.glassSurface ? Color.menu.scrim : Color.background
+      opacity: root.dimBackground ? (root.glassSurface ? 1 : 0.86) : 0
+      Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+    }
+
     Rectangle {
       id: sidePanelBody
       z: 1
@@ -2363,9 +2394,14 @@ Item {
         y: root.panelRevealOffsetY
       }
       radius: root.reservesSpace ? 0 : Style.cornerRadius
-      color: root.transparentBackground ? "transparent" : Color.popups.background
-      border.width: root.reservesSpace || root.transparentBackground ? 0 : 1
-      border.color: root.transparentBackground ? "transparent" : Color.popups.border
+      color: !root.glassSurface
+        ? Color.popups.background
+        : (root.reservesSpace
+          ? "transparent"
+          : Qt.rgba(Color.popups.background.r, Color.popups.background.g,
+            Color.popups.background.b, 0.72))
+      border.width: root.reservesSpace || root.glassSurface ? 0 : 1
+      border.color: root.glassSurface ? "transparent" : Color.popups.border
 
       MouseArea {
         anchors.fill: parent
@@ -3394,6 +3430,9 @@ Item {
       openTrigger: root.openTrigger
       edgeRevealDelayMs: root.edgeRevealDelayMs
       openAnimationEnabled: root.openAnimationEnabled
+      surfaceMode: root.configuredSurfaceMode
+      dimBackground: root.setting("dimBackground", false) === true
+      blurBackground: root.setting("blurBackground", true) === true
       onCloseRequested: root.settingsOpen = false
       onSettingRequested: function(name, value) { root.persistSidePanelSetting(name, value) }
       onResizeModeRequested: function(enabled) {
@@ -3411,5 +3450,9 @@ Item {
       foreground: root.chromeForeground
       onCloseRequested: root.shortcutsOpen = false
     }
+  }
+
+  SidePanelBlurSettings {
+    active: root.blurBackground
   }
 }

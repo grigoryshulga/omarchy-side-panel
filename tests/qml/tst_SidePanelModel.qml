@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../../SidePanelModel.js" as SidePanelModel
+import "../../SidePanelAppearance.js" as SidePanelAppearance
 
 TestCase {
   name: "SidePanelModel"
@@ -161,6 +162,44 @@ TestCase {
     compare(entry.pages.length, 1)
     compare(entry.pages[0].title, "Main")
     compare(entry.pages[0].items[0].id, "one")
+  }
+
+  function test_surface_mode_normalizes_like_the_dashboard() {
+    compare(SidePanelAppearance.surfaceMode("Glass"), "glass")
+    compare(SidePanelAppearance.surfaceMode("framed"), "framed")
+    compare(SidePanelAppearance.surfaceMode(" Auto "), "auto")
+    compare(SidePanelAppearance.surfaceMode("push"), "auto")
+    compare(SidePanelAppearance.surfaceMode(undefined), "auto")
+
+    verify(SidePanelAppearance.usesGlass("glass", false))
+    verify(!SidePanelAppearance.usesGlass("framed", true))
+    verify(SidePanelAppearance.usesGlass("auto", true))
+    verify(!SidePanelAppearance.usesGlass("auto", false))
+  }
+
+  function test_state_round_trips_the_surface_settings() {
+    var state = SidePanelModel.parseState(JSON.stringify({
+      version: 1,
+      pages: [],
+      surfaceMode: "Glass",
+      dimBackground: true,
+      blurBackground: false
+    }), [], resolve)
+    compare(state.surfaceMode, "glass")
+    compare(state.dimBackground, true)
+    compare(state.blurBackground, false)
+
+    var fallback = SidePanelModel.parseState(JSON.stringify({
+      version: 1, pages: [], surfaceMode: "nonsense"
+    }), [], resolve)
+    compare(fallback.surfaceMode, "auto")
+
+    var entry = SidePanelModel.persistedEntry({
+      surfaceMode: "Framed", dimBackground: false, blurBackground: true
+    }, [{ title: "Main", items: [] }])
+    compare(entry.surfaceMode, "framed")
+    compare(entry.dimBackground, false)
+    compare(entry.blurBackground, true)
   }
 
   function test_plugin_catalog_uses_public_list_and_manifests() {

@@ -1,5 +1,7 @@
 .pragma library
 
+.import "SidePanelAppearance.js" as SidePanelAppearance
+
 var MAX_STATE_BYTES = 64 * 1024
 var MAX_CONFIG_BYTES = 256 * 1024
 var MAX_PAGES = 12
@@ -135,6 +137,10 @@ function parseState(raw, defaults, resolveId) {
       normalized.edgeRevealDelayMs = boundedInteger(state.edgeRevealDelayMs, 250, 0, 2000)
     if (typeof state.openAnimationEnabled === "boolean")
       normalized.openAnimationEnabled = state.openAnimationEnabled
+    if (state.surfaceMode !== undefined)
+      normalized.surfaceMode = SidePanelAppearance.surfaceMode(state.surfaceMode)
+    if (typeof state.dimBackground === "boolean") normalized.dimBackground = state.dimBackground
+    if (typeof state.blurBackground === "boolean") normalized.blurBackground = state.blurBackground
     var edgeSize = normalizedExtent(state.edgeSize, MAX_EDGE_SIZE)
     if (edgeSize > 0) normalized.edgeSize = edgeSize
     if (state.overlayCrossSize !== undefined)
@@ -344,6 +350,10 @@ function persistedEntry(settings, pages) {
     entry.edgeRevealDelayMs = boundedInteger(source.edgeRevealDelayMs, 250, 0, 2000)
   if (typeof source.openAnimationEnabled === "boolean")
     entry.openAnimationEnabled = source.openAnimationEnabled
+  if (source.surfaceMode !== undefined)
+    entry.surfaceMode = SidePanelAppearance.surfaceMode(source.surfaceMode)
+  if (typeof source.dimBackground === "boolean") entry.dimBackground = source.dimBackground
+  if (typeof source.blurBackground === "boolean") entry.blurBackground = source.blurBackground
   var revision = normalizedRevision(source.sidePanelRevision)
   if (revision > 0) entry.sidePanelRevision = revision
   for (var index = 0; index < 2; index++) {

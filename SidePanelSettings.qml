@@ -16,6 +16,9 @@ Item {
   property int edgeRevealDelayMs: 250
   property bool openAnimationEnabled: true
   property bool openTriggerMenuOpen: false
+  property string surfaceMode: "auto"
+  property bool dimBackground: false
+  property bool blurBackground: true
 
   signal closeRequested()
   signal settingRequested(string name, var value)
@@ -238,6 +241,96 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: root.resizeModeRequested(!root.resizeMode)
+        }
+      }
+
+      Text { text: "APPEARANCE"; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+
+      Row {
+        id: surfaceModeOptions
+        objectName: "surfaceModeOptions"
+        width: parent.width
+        spacing: Style.space(8)
+        Repeater {
+          model: [
+            { mode: "Auto", icon: "\uf021", label: "Auto" },
+            { mode: "Framed", icon: "\uf0c8", label: "Framed" },
+            { mode: "Glass", icon: "\uf06e", label: "Glass" }
+          ]
+          delegate: Rectangle {
+            required property var modelData
+            width: Math.floor((surfaceModeOptions.width - surfaceModeOptions.spacing * 2) / 3)
+            height: Math.round(Style.space(42))
+            radius: Style.cornerRadius
+            color: String(root.surfaceMode).toLowerCase() === modelData.mode.toLowerCase()
+              ? Style.selectedFillFor(root.foreground, Color.accent)
+              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(5)
+              Text { text: modelData.icon; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              Text { text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+            }
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.settingRequested("surfaceMode", modelData.mode)
+            }
+          }
+        }
+      }
+
+      Text {
+        width: parent.width
+        text: "Auto turns the panel glassy only while reserving screen space for a transparent bar."
+        color: root.foreground
+        opacity: 0.62
+        wrapMode: Text.WordWrap
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+      }
+
+      Item {
+        objectName: "dimBackgroundRow"
+        visible: !root.reservesSpace
+        width: parent.width
+        height: visible ? Math.round(Style.space(34)) : 0
+        Row {
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(7)
+          Text { text: "\uf185"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Dim background"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+        }
+        ToggleSwitch {
+          objectName: "dimBackgroundControl"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          checked: root.dimBackground
+          foreground: root.foreground
+          onToggled: root.settingRequested("dimBackground", !root.dimBackground)
+        }
+      }
+
+      Item {
+        objectName: "blurBackgroundRow"
+        visible: root.reservesSpace && String(root.surfaceMode).toLowerCase() !== "framed"
+        width: parent.width
+        height: visible ? Math.round(Style.space(34)) : 0
+        Row {
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(7)
+          Text { text: "\uf1fc"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { text: "Blur background"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+        }
+        ToggleSwitch {
+          objectName: "blurBackgroundControl"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          checked: root.blurBackground
+          foreground: root.foreground
+          onToggled: root.settingRequested("blurBackground", !root.blurBackground)
         }
       }
 

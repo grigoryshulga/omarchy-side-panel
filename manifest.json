@@ -24,7 +24,9 @@
       "openTrigger": "hover",
       "edgeRevealDelayMs": 250,
       "openAnimationEnabled": true,
-      "transparentBackground": false
+      "surfaceMode": "Auto",
+      "dimBackground": false,
+      "blurBackground": true
     },
     "schema": [
       {
@@ -77,11 +79,26 @@
         "defaultValue": true
       },
       {
-        "key": "transparentBackground",
+        "key": "surfaceMode",
+        "type": "enum",
+        "label": "Surface mode",
+        "description": "Framed keeps the opaque card; Glass shows the desktop through the panel. Auto uses Glass only while reserving space for a transparent bar.",
+        "options": ["Auto", "Framed", "Glass"],
+        "defaultValue": "Auto"
+      },
+      {
+        "key": "dimBackground",
         "type": "boolean",
-        "label": "Transparent background",
-        "description": "Use a translucent side-panel background.",
+        "label": "Dim background",
+        "description": "Dim the desktop behind the floating Side Panel. Ignored while reserving screen space.",
         "defaultValue": false
+      },
+      {
+        "key": "blurBackground",
+        "type": "boolean",
+        "label": "Blur background",
+        "description": "Ask Hyprland to blur the desktop behind the Side Panel while reserving space.",
+        "defaultValue": true
       }
     ]
   }
