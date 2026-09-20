@@ -67,7 +67,8 @@ function normalize(items, resolveId, maximum) {
       icon: boundedString(item.icon, MAX_ITEM_ICON_LENGTH),
       height: normalizedHeight(item.height),
       width: normalizedHeight(item.width),
-      embedding: item.embedding === "standard" ? "standard" : ""
+      embedding: item.embedding === "standard" ? "standard" : "",
+      background: item.background !== false
     })
   }
   return normalized
@@ -162,7 +163,8 @@ function copy(items) {
       icon: boundedString(source[i].icon, MAX_ITEM_ICON_LENGTH),
       height: normalizedHeight(source[i].height),
       width: normalizedHeight(source[i].width),
-      embedding: source[i].embedding === "standard" ? "standard" : ""
+      embedding: source[i].embedding === "standard" ? "standard" : "",
+      background: source[i].background !== false
     })
   }
   return result

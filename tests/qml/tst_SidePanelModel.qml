@@ -21,6 +21,24 @@ TestCase {
     compare(items[0].embedding, "")
   }
 
+  function test_items_track_their_own_background() {
+    var items = SidePanelModel.normalize([
+      { id: "one" },
+      { id: "two", background: false },
+      { id: "three", background: true }
+    ], resolve)
+    compare(items[0].background, true)
+    compare(items[1].background, false)
+    compare(items[2].background, true)
+
+    var copied = SidePanelModel.copy(items)
+    compare(copied[0].background, true)
+    compare(copied[1].background, false)
+
+    var entry = SidePanelModel.persistedEntry({}, [{ title: "Main", items: [{ id: "one", background: false }] }])
+    compare(entry.pages[0].items[0].background, false)
+  }
+
   function test_normalize_bounds_item_extents() {
     var items = SidePanelModel.normalize([{ id: "one", height: Infinity, width: SidePanelModel.MAX_ITEM_EXTENT + 1 }], resolve)
     compare(items[0].height, 0)

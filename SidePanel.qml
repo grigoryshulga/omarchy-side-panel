@@ -911,6 +911,14 @@ Item {
     persistItems(next)
   }
 
+  function setPluginBackground(id, background) {
+    var index = itemIndex(id)
+    if (index < 0) return
+    var next = copyItems(pluginItems)
+    next[index].background = background === true
+    persistItems(next)
+  }
+
   function beginDrag(row, x, y) {
     if (!currentPluginList) return
     draggedId = row.pluginId
@@ -2817,6 +2825,8 @@ Item {
               required property var modelData
               readonly property string pluginId: String(modelData.id)
               readonly property bool expanded: !root.editing || root.expandedId === pluginId
+              readonly property bool backgroundEnabled: pluginRow.plugin.background !== false
+              readonly property bool focused: pluginRow.index === root.keyboardPluginIndex
               readonly property var plugin: modelData
               onExpandedChanged: if (expanded && pageLoader.item) root.restorePlugin(pageLoader.item)
               width: root.verticalEdge
@@ -2908,9 +2918,42 @@ Item {
                   elide: Text.ElideRight
                 }
 
+                Rectangle {
+                  id: backgroundButton
+                  anchors.right: deleteButton.left
+                  anchors.rightMargin: Style.space(7)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.round(Style.space(30))
+                  height: width
+                  radius: Style.cornerRadius > 0 ? height / 2 : 0
+                  color: backgroundMouse.containsMouse
+                    ? Style.hoverFillFor(root.foreground, Color.accent)
+                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
+                  Accessible.role: Accessible.Button
+                  Accessible.name: pluginRow.backgroundEnabled
+                    ? "Hide plugin background" : "Show plugin background"
+                  Accessible.checked: pluginRow.backgroundEnabled
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: pluginRow.backgroundEnabled ? "\u25a3" : "\u25a2"
+                    color: root.foreground
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  MouseArea {
+                    id: backgroundMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.setPluginBackground(pluginRow.pluginId, !pluginRow.backgroundEnabled)
+                  }
+                }
+
                 Text {
                   id: expansionIndicator
-                  anchors.right: deleteButton.left
+                  anchors.right: backgroundButton.left
                   anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
                   text: pluginRow.expanded ? "-" : "+"
@@ -2981,11 +3024,13 @@ Item {
                   anchors.fill: parent
                   anchors.topMargin: Style.space(5)
                   radius: Style.cornerRadius
-                  color: root.transparentBackground
-                    ? Color.popups.background
-                    : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025)
-                  border.width: 1
-                  border.color: pluginRow.index === root.keyboardPluginIndex
+                  color: !pluginRow.backgroundEnabled
+                    ? "transparent"
+                    : (root.transparentBackground
+                      ? Color.popups.background
+                      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.025))
+                  border.width: pluginRow.backgroundEnabled || pluginRow.focused ? 1 : 0
+                  border.color: pluginRow.focused
                     ? Color.accent
                     : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
 
