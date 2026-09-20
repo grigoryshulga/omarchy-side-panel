@@ -33,7 +33,8 @@ omarchy plugin remove gshulga.side-panel
 
 1. Select the Side Panel icon in the bar.
 2. Hover the current Side Panel page title and choose **Edit**.
-3. Choose **Add Plugin**, then select an installed plugin for the current page.
+3. Choose **Add Plugin**, search the catalog by name, id, or description, then
+   select a plugin for the current page.
    Side Panel enables the plugin when necessary.
 4. Choose **Done** to leave Edit mode.
 
@@ -53,7 +54,7 @@ Side Panel always retains at least one page.
   grips to resize them.
 - The ordinary mouse wheel scrolls the hovered plugin panel. Hold `Alt` while
   scrolling anywhere in the Side Panel, or scroll directly over the page
-  indicators without `Alt`, to move between Side Panel pages.
+  tabs without `Alt`, to move between Side Panel pages.
 - Choose how to open the Side Panel from its configured screen Edge: double-click,
   hover, or disable edge opening altogether.
 
@@ -74,10 +75,22 @@ The Settings page provides these controls:
   from screen edge**. Hover is enabled by default.
 - **Reveal delay**: the pointer dwell time before hover opening, from 0 to 2000
   ms. The default is 250 ms.
+- **Surface mode**: **Auto** keeps the historic behaviour (the panel turns
+  glassy only while it reserves space for a transparent bar); **Framed** always
+  draws the opaque card; **Glass** always shows the desktop through the panel.
+- **Dim background**: dims the desktop behind a floating (Overlay) panel. Hidden
+  in Reserve Space mode, which already owns its screen strip.
+- **Blur background**: asks Hyprland to blur the desktop behind the panel. Only
+  applies in Reserve Space mode, where the panel's layer surface matches the
+  panel footprint.
 
-Omarchy's plugin settings also offer a transparent Side Panel background.
 Side Panel corners and controls follow Omarchy's current Hyprland rounding
 setting automatically.
+
+Edit mode also exposes per-item controls. Select an item to focus it, then use
+the **background** toggle (`▣`/`▢`) in its header to hide that item's frame, or
+**Remove** to delete it. Framed items still draw an accent outline while focused
+so keyboard navigation stays visible.
 
 ## Keyboard shortcuts
 
@@ -177,7 +190,7 @@ boundaries, see [Automatic embedding](docs/automatic-embedding.md).
 | --- | --- |
 | ![Compact Side Panel overlay on the left edge](assets/screenshots/overlay-left-small.png) | ![Side Panel overlay on the top edge](assets/screenshots/top-overlay-example.png) |
 
-| Overlay mode | Transparent background |
+| Overlay mode | Glass surface |
 | --- | --- |
 | ![Side Panel floating over windows](assets/screenshots/overlay-example.png) | ![Side Panel with a transparent background](assets/screenshots/transparent-example.png) |
 
