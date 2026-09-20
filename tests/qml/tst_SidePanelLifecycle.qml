@@ -288,6 +288,23 @@ TestCase {
     compare(tabs.orientation, ListView.Vertical)
   }
 
+  function test_single_page_hides_the_page_carousel() {
+    var carousel = findChild(sidePanel, "pageCarousel")
+    var tabs = findChild(sidePanel, "pageTabs")
+    verify(carousel !== null)
+    verify(tabs !== null)
+
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", pages: [fixturePage] }
+    wait(180)
+    verify(!carousel.visible)
+    verify(!tabs.visible)
+
+    sidePanel.settings = { edge: "left", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
+    wait(180)
+    verify(carousel.visible)
+    verify(tabs.visible)
+  }
+
   function test_alt_wheel_moves_between_pages() {
     sidePanel.currentPage = 0
     sidePanel.handlePanelWheel(Qt.AltModifier, 120, 0)

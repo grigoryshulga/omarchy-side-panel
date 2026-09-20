@@ -3003,10 +3003,19 @@ Item {
           Rectangle {
             id: pageCarousel
             objectName: "pageCarousel"
-            width: root.verticalEdge ? parent.width : Math.min(parent.width, Math.round(Style.space(160)))
+            // A lone page needs no switcher. Edit mode still shows the carousel
+            // so that "Add page" stays reachable.
+            readonly property bool tabsVisible: root.sidePanelPages.length > 1
+            readonly property bool active: pageCarousel.tabsVisible || root.editing
+            visible: pageCarousel.active
+            width: root.verticalEdge
+              ? parent.width
+              : (pageCarousel.active ? Math.min(parent.width, Math.round(Style.space(160))) : 0)
             // On horizontal edges the tab column must clear the title toolbar,
             // so it starts where the plugin list starts and runs to the bottom.
-            height: root.verticalEdge ? Math.round(Style.space(26)) : Math.max(0, parent.height - y)
+            height: root.verticalEdge
+              ? (pageCarousel.active ? Math.round(Style.space(26)) : 0)
+              : Math.max(0, parent.height - y)
             x: root.verticalEdge ? 0 : parent.width - width
             y: root.verticalEdge ? parent.height - height : pageListHost.y
             color: "transparent"
@@ -3014,6 +3023,7 @@ Item {
             ListView {
               id: pageTabs
               objectName: "pageTabs"
+              visible: pageCarousel.tabsVisible
               anchors.left: parent.left
               anchors.right: root.verticalEdge
                 ? (root.editing ? pageAdd.left : parent.right)
