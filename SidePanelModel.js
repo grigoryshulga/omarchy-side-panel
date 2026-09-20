@@ -1,6 +1,7 @@
 .pragma library
 
 var MAX_STATE_BYTES = 64 * 1024
+var MAX_CONFIG_BYTES = 256 * 1024
 var MAX_PAGES = 12
 var MAX_ITEMS_PER_PAGE = 24
 var MAX_TOTAL_ITEMS = 48
@@ -234,6 +235,56 @@ function enableInConfig(config, id, firstParty) {
     if (pluginIdOf(config.plugins[index]) === pluginId) return true
   config.plugins.push({ id: pluginId })
   return true
+}
+
+function parseShellConfig(raw) {
+  if (utf8ByteLength(raw) > MAX_CONFIG_BYTES) return null
+  try {
+    var config = JSON.parse(String(raw || ""))
+    return config && typeof config === "object" && !Array.isArray(config) ? config : null
+  } catch (error) {
+    return null
+  }
+}
+
+function configMentionsPlugin(config, id) {
+  if (!config || typeof config !== "object") return false
+  if (config.bar && typeof config.bar.layout === "object" && config.bar.layout !== null) {
+    var sections = ["left", "center", "right"]
+    for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+      var entries = config.bar.layout[sections[sectionIndex]]
+      if (!Array.isArray(entries)) continue
+      for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+        if (pluginIdOf(entries[entryIndex]) === id) return true
+      }
+    }
+  }
+  if (Array.isArray(config.plugins)) {
+    for (var pluginIndex = 0; pluginIndex < config.plugins.length; pluginIndex++)
+      if (pluginIdOf(config.plugins[pluginIndex]) === id) return true
+  }
+  return false
+}
+
+// Mirrors Omarchy's PluginRegistry.isEnabled() against the effective shell
+// config. The public `omarchy plugin list` reports only bar placement as
+// "enabled" for bar-widget plugins, so it cannot tell whether a widget Side
+// Panel enabled through `plugins[]` will actually load at shell startup.
+function pluginEnabledInConfig(config, manifest, id) {
+  var key = boundedString(id, MAX_ITEM_ID_LENGTH)
+  if (key === "" || !config || typeof config !== "object") return false
+  var kinds = manifest && Array.isArray(manifest.kinds) ? manifest.kinds : []
+  if (kinds.indexOf("bar") >= 0) {
+    var selectedBar = config.bar && config.bar.id
+      ? boundedString(config.bar.id, MAX_ITEM_ID_LENGTH) : "omarchy.bar"
+    return selectedBar === key
+  }
+  if (Array.isArray(config.disabledPlugins)) {
+    for (var index = 0; index < config.disabledPlugins.length; index++)
+      if (pluginIdOf(config.disabledPlugins[index]) === key) return false
+  }
+  if (manifest && (manifest.__isFirstParty === true || manifest.firstParty === true)) return true
+  return configMentionsPlugin(config, key)
 }
 
 function pluginCatalogFromPublicSources(listRaw, catalogRaw) {

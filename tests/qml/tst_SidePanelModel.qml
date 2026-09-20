@@ -197,6 +197,45 @@ TestCase {
     verify(!SidePanelModel.enableInConfig(config, "gshulga.side-panel", false))
   }
 
+  function test_parse_shell_config_rejects_non_objects_and_oversized_input() {
+    var config = SidePanelModel.parseShellConfig("{\"version\":1,\"plugins\":[]}")
+    compare(config.version, 1)
+    verify(SidePanelModel.parseShellConfig("[]") === null)
+    verify(SidePanelModel.parseShellConfig("not json") === null)
+    verify(SidePanelModel.parseShellConfig("") === null)
+    var oversized = "{\"pad\":\"" + new Array(SidePanelModel.MAX_CONFIG_BYTES + 1).join(" ") + "\"}"
+    verify(SidePanelModel.parseShellConfig(oversized) === null)
+  }
+
+  function test_plugin_enabled_in_config_matches_shell_loadability() {
+    var widget = { kinds: ["bar-widget"], __isFirstParty: false }
+    // A widget enabled through plugins[] loads even though the public plugin
+    // list reports enabled:false for it (it is not placed on the bar).
+    verify(SidePanelModel.pluginEnabledInConfig({ plugins: [{ id: "acme.weather" }] }, widget, "acme.weather"))
+    // A widget placed on the bar is enabled too.
+    verify(SidePanelModel.pluginEnabledInConfig(
+      { bar: { layout: { left: [], center: [], right: [{ id: "acme.weather" }] } } }, widget, "acme.weather"))
+    // Unreferenced widgets stay disabled.
+    verify(!SidePanelModel.pluginEnabledInConfig({ plugins: [] }, widget, "acme.weather"))
+  }
+
+  function test_plugin_enabled_in_config_honours_first_party_and_disabled() {
+    var firstParty = { kinds: ["panel"], __isFirstParty: true }
+    var disabled = { kinds: ["panel"], __isFirstParty: true }
+    verify(SidePanelModel.pluginEnabledInConfig({}, firstParty, "omarchy.osd"))
+    verify(!SidePanelModel.pluginEnabledInConfig({ disabledPlugins: ["omarchy.osd"] }, disabled, "omarchy.osd"))
+
+    var panel = { kinds: ["panel"], __isFirstParty: false }
+    verify(SidePanelModel.pluginEnabledInConfig({ plugins: [{ id: "acme.panel" }] }, panel, "acme.panel"))
+  }
+
+  function test_plugin_enabled_in_config_resolves_bar_option() {
+    var bar = { kinds: ["bar"], __isFirstParty: true }
+    verify(SidePanelModel.pluginEnabledInConfig({}, bar, "omarchy.bar"))
+    verify(!SidePanelModel.pluginEnabledInConfig({}, bar, "acme.bar"))
+    verify(SidePanelModel.pluginEnabledInConfig({ bar: { id: "acme.bar" } }, bar, "acme.bar"))
+  }
+
   function test_persisted_entry_allowlists_and_bounds_settings() {
     var settings = {
       edge: "outside",

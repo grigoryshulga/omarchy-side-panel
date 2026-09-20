@@ -194,8 +194,12 @@ Item {
   readonly property string stateBase: absoluteXdgBase("XDG_STATE_HOME", "/.local/state")
   property string cacheRoot: cacheBase === "" ? "" : cacheBase + "/omarchy-side-panel"
   property string statePath: stateBase === "" ? "" : stateBase + "/omarchy/gshulga.side-panel.json"
-  readonly property int pluginRegistryRevision: bar && bar.shell && bar.shell.pluginRegistry
-    ? Number(bar.shell.pluginRegistry.registryRevision || 0) : 0
+  // Third-party plugins receive Omarchy's scoped PluginShellApi, which has no
+  // pluginRegistry. Guard access so bindings stay quiet under that scope.
+  readonly property var pluginRegistryApi: bar && bar.shell && "pluginRegistry" in bar.shell
+    ? bar.shell.pluginRegistry : null
+  readonly property int pluginRegistryRevision: pluginRegistryApi
+    ? Number(pluginRegistryApi.registryRevision || 0) : 0
   property var pluginCatalog: []
   property string pluginListText: ""
   property string pluginManifestText: ""
@@ -206,6 +210,13 @@ Item {
   property string pluginEnableId: ""
   property bool pluginEnableFirstParty: false
   property var hostedPluginIds: ({})
+  // Effective shell.json, used to decide whether a plugin is actually enabled
+  // for the shell rather than merely placed in the bar.
+  property var pluginConfig: ({})
+  property bool pluginConfigLoaded: false
+  property bool pluginCatalogLoaded: false
+  property var pluginEnableQueue: []
+  property var failedEnableIds: ({})
   readonly property string shellConfigPath: {
     var configured = String(Quickshell.env("XDG_CONFIG_HOME") || "")
     if (configured.charAt(0) === "/") return configured.replace(/\/+$/, "") + "/omarchy/shell.json"
@@ -974,6 +985,7 @@ Item {
   }
 
   function refreshPluginCatalog() {
+    if (shellConfigPath !== "") shellConfigFile.reload()
     if (pluginListProcess.running || pluginCatalogProcess.running) return
     pluginCatalogRequest += 1
     pluginListProcess.command = ["/usr/share/omarchy/bin/omarchy", "plugin", "list", "--json"]
@@ -986,7 +998,21 @@ Item {
     if (pluginListGeneration !== pluginCatalogRequest || pluginManifestGeneration !== pluginCatalogRequest)
       return
     pluginCatalog = SidePanelModel.pluginCatalogFromPublicSources(pluginListText, pluginManifestText)
+    pluginCatalogLoaded = true
     pluginCatalogRevision += 1
+    if (opened) ensurePinnedPluginsEnabled()
+  }
+
+  function applyShellConfigFile() {
+    var parsed = SidePanelModel.parseShellConfig(shellConfigFile.text())
+    if (!parsed) {
+      pluginConfigLoaded = false
+      return
+    }
+    pluginConfig = parsed
+    pluginConfigLoaded = true
+    if (opened) ensurePinnedPluginsEnabled()
+    if (opened) Qt.callLater(adaptPreferredPanels)
   }
 
   function addPlugin(id) {
@@ -1009,20 +1035,66 @@ Item {
     adaptPreferredPanels()
   }
 
+  function pluginPendingEnable(id) {
+    for (var index = 0; index < pluginEnableQueue.length; index++)
+      if (pluginEnableQueue[index].id === id) return true
+    return false
+  }
+
+  // Enabling is queued rather than dropped: a plugin added while another enable
+  // is in flight would otherwise be persisted as an item that never reaches
+  // shell.json, and so would vanish after the next shell restart.
   function enablePluginForSidePanel(id, manifest) {
-    if (pluginEnabled({ id: id })) return true
+    var wanted = String(id || "")
+    if (wanted === "" || wanted === "gshulga.side-panel") return false
+    if (pluginEnabled({ id: wanted })) return true
+    if (shellConfigPath === "") return false
+    if (pluginPendingEnable(wanted)) return true
     var firstParty = !!(manifest && (manifest.__isFirstParty === true || manifest.firstParty === true))
-    if (firstParty) return true
-    if (shellConfigPath === "" || pluginEnableProcess.running) return false
-    pluginEnableId = id
-    pluginEnableFirstParty = firstParty
-    markHostedPlugin(id)
+    pluginEnableQueue = pluginEnableQueue.concat([{ id: wanted, firstParty: firstParty }])
+    startNextPluginEnable()
+    return true
+  }
+
+  function startNextPluginEnable() {
+    if (pluginEnableProcess.running || pluginEnableQueue.length === 0 || shellConfigPath === "") return
+    var request = pluginEnableQueue[0]
+    pluginEnableQueue = pluginEnableQueue.slice(1)
+    pluginEnableId = request.id
+    pluginEnableFirstParty = request.firstParty
+    markHostedPlugin(request.id)
     pluginEnableProcess.command = [
       "/usr/bin/python3", "-I", pluginDir + "/bin/omarchy-side-panel-enable",
-      shellConfigPath, id, firstParty ? "true" : "false"
+      shellConfigPath, request.id, request.firstParty ? "true" : "false"
     ]
     pluginEnableProcess.running = true
-    return true
+  }
+
+  // Repair items whose plugin is not actually enabled by the shell. This covers
+  // states saved before enablement was durable, and items added while another
+  // enable was in flight.
+  function ensurePinnedPluginsEnabled() {
+    // Wait for authoritative inputs before acting: the effective config decides
+    // whether a plugin is enabled, and the catalog supplies its manifest. Acting
+    // earlier would treat "unknown" as "disabled" and rewrite shell.json.
+    if (!pluginConfigLoaded || !pluginCatalogLoaded) return
+    for (var pageIndex = 0; pageIndex < sidePanelPages.length; pageIndex++) {
+      var items = sidePanelPages[pageIndex].items || []
+      for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+        var item = items[itemIndex]
+        if (!item || pluginEnabled(item)) continue
+        var resolved = resolvedPluginId(item)
+        if (failedEnableIds[resolved]) continue
+        var manifest = pluginFor(item.id)
+        if (manifest) enablePluginForSidePanel(resolved, manifest)
+      }
+    }
+  }
+
+  function reloadShellConfig() {
+    if (shellConfigReloadProcess.running) return
+    shellConfigReloadProcess.command = ["/usr/share/omarchy/bin/omarchy-shell", "shell", "reloadConfig"]
+    shellConfigReloadProcess.running = true
   }
 
   function catalogPlugin(id) {
@@ -1038,9 +1110,8 @@ Item {
     var resolved = resolvedPluginId({ id: id })
     var catalog = catalogPlugin(resolved)
     if (catalog) return catalog
-    if (!bar || !bar.shell || !bar.shell.pluginRegistry) return null
-    var registry = bar.shell.pluginRegistry
-    return registry.installedPlugins ? registry.installedPlugins[resolved] : null
+    var registry = pluginRegistryApi
+    return registry && registry.installedPlugins ? registry.installedPlugins[resolved] || null : null
   }
 
   function markHostedPlugin(id) {
@@ -1055,19 +1126,33 @@ Item {
   function pluginEnabled(item) {
     if (!item) return false
     var id = resolvedPluginId(item)
+    if (id === "") return false
     if (hostedPluginIds[id]) return true
     var catalog = catalogPlugin(id)
-    if (catalog) return catalog.__isFirstParty === true || catalog.enabled === true
-    if (!bar || !bar.shell || !bar.shell.pluginRegistry) return false
-    return bar.shell.pluginRegistry.isEnabled(id)
+    if (catalog) {
+      // For bar-widget plugins the public catalog's `enabled` flag means "is on
+      // the bar", not "will load". Prefer the effective shell config once it is
+      // available so plugins enabled through plugins[] still count.
+      if (pluginConfigLoaded) return SidePanelModel.pluginEnabledInConfig(pluginConfig, catalog, id)
+      return catalog.__isFirstParty === true || catalog.enabled === true
+    }
+    var registry = pluginRegistryApi
+    if (registry && typeof registry.isEnabled === "function") {
+      try {
+        return registry.isEnabled(id) === true
+      } catch (error) {
+        return false
+      }
+    }
+    return false
   }
 
   function resolvedPluginId(item) {
     if (!item) return ""
     var id = String(item.id || "")
-    if (id === "" || !bar || !bar.shell || !bar.shell.pluginRegistry) return id
-    var registry = bar.shell.pluginRegistry
-    if (typeof registry.resolveEnabledId !== "function") return id
+    if (id === "") return id
+    var registry = pluginRegistryApi
+    if (!registry || typeof registry.resolveEnabledId !== "function") return id
     var resolved = String(registry.resolveEnabledId(id) || "")
     return resolved !== "" ? resolved : id
   }
@@ -1552,6 +1637,18 @@ Item {
     }
   }
 
+  FileView {
+    id: shellConfigFile
+    path: root.shellConfigPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyShellConfigFile()
+    onLoadFailed: function(error) {
+      root.pluginConfigLoaded = false
+    }
+    onFileChanged: reload()
+  }
+
   Timer {
     id: stateSaveTimer
     interval: root.stateSaveRetryCount > 0 ? 1000 : 100
@@ -1694,7 +1791,9 @@ Item {
       currentPage = 0
       resetPanelWarmup()
       panelErrors = ({})
+      failedEnableIds = ({})
       refreshPluginCatalog()
+      ensurePinnedPluginsEnabled()
       enqueueAllPanelWarmups()
       adaptPreferredPanels()
     } else {
@@ -1719,7 +1818,7 @@ Item {
   }
 
   Connections {
-    target: root.bar && root.bar.shell ? root.bar.shell.pluginRegistry : null
+    target: root.pluginRegistryApi
     function onPluginsChanged() { root.handlePluginRegistryChange() }
     function onLocalPluginChanged(pluginId) { root.handlePluginRegistryChange() }
   }
@@ -1813,14 +1912,39 @@ Item {
       pluginEnableKillTimer.stop()
       var id = root.pluginEnableId
       root.pluginEnableId = ""
-      if (exitCode !== 0) {
+      if (id !== "" && exitCode !== 0) {
         console.warn("SidePanel: cannot enable " + id)
         var next = ({})
         for (var key in root.hostedPluginIds) if (key !== id) next[key] = true
         root.hostedPluginIds = next
+        var failed = ({})
+        for (var failedKey in root.failedEnableIds) failed[failedKey] = true
+        failed[id] = true
+        root.failedEnableIds = failed
+      } else if (id !== "") {
+        var recovered = ({})
+        for (var recoveredKey in root.failedEnableIds)
+          if (recoveredKey !== id) recovered[recoveredKey] = true
+        root.failedEnableIds = recovered
+        // The enable helper writes shell.json out of process. Tell the running
+        // shell to adopt it so a later shell-side write cannot clobber it.
+        root.reloadShellConfig()
+        root.refreshPluginCatalog()
       }
-      root.refreshPluginCatalog()
+      root.startNextPluginEnable()
       if (root.opened) Qt.callLater(root.adaptPreferredPanels)
+    }
+  }
+
+  Process {
+    id: shellConfigReloadProcess
+    stdout: StdioCollector {
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (root.shellConfigPath !== "") shellConfigFile.reload()
+      root.refreshPluginCatalog()
+      root.startNextPluginEnable()
     }
   }
 
