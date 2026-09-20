@@ -277,19 +277,15 @@ TestCase {
     compare(sidePanel.panelRevealOffsetY, 0)
   }
 
-  function test_horizontal_edges_use_vertical_page_dots() {
-    var horizontalDots = findChild(sidePanel, "pageDotsHorizontal")
-    var verticalDots = findChild(sidePanel, "pageDotsVertical")
-    verify(horizontalDots !== null)
-    verify(verticalDots !== null)
+  function test_horizontal_edges_use_vertical_page_tabs() {
+    var tabs = findChild(sidePanel, "pageTabs")
+    verify(tabs !== null)
 
     sidePanel.settings = { edge: "left", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
-    verify(horizontalDots.visible)
-    verify(!verticalDots.visible)
+    compare(tabs.orientation, ListView.Horizontal)
 
     sidePanel.settings = { edge: "top", layoutMode: "overlay", pages: [fixturePage, secondFixturePage] }
-    verify(!horizontalDots.visible)
-    verify(verticalDots.visible)
+    compare(tabs.orientation, ListView.Vertical)
   }
 
   function test_alt_wheel_moves_between_pages() {

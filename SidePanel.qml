@@ -3003,67 +3003,72 @@ Item {
           Rectangle {
             id: pageCarousel
             objectName: "pageCarousel"
-            width: root.verticalEdge
-              ? pageDots.width + (root.editing ? pageAdd.width + Style.space(10) : 0)
-              : Math.max(pageDotsVertical.width, root.editing ? pageAdd.width : 0)
-            height: root.verticalEdge
-              ? Math.round(Style.space(24))
-              : pageDotsVertical.height + (root.editing ? pageAdd.height + Style.space(10) : 0)
-            x: root.verticalEdge ? (parent.width - width) / 2 : parent.width - width
-            y: root.verticalEdge ? parent.height - height : (parent.height - height) / 2
+            width: root.verticalEdge ? parent.width : Math.min(parent.width, Math.round(Style.space(160)))
+            height: root.verticalEdge ? Math.round(Style.space(26)) : parent.height
+            x: root.verticalEdge ? 0 : parent.width - width
+            y: root.verticalEdge ? parent.height - height : 0
             color: "transparent"
 
-            Row {
-              id: pageDots
-              objectName: "pageDotsHorizontal"
-              visible: root.verticalEdge
+            ListView {
+              id: pageTabs
+              objectName: "pageTabs"
               anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(8)
-              Repeater {
-                model: root.sidePanelPages
-                delegate: Rectangle {
-                  required property int index
-                  width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
-                  height: width
-                  radius: width / 2
-                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.selectPage(index)
-                    onWheel: function(wheel) {
-                      root.handlePageWheel(wheel.angleDelta.x, wheel.angleDelta.y)
-                      wheel.accepted = true
-                    }
-                  }
-                }
-              }
-            }
-
-            Column {
-              id: pageDotsVertical
-              objectName: "pageDotsVertical"
-              visible: !root.verticalEdge
+              anchors.right: root.verticalEdge
+                ? (root.editing ? pageAdd.left : parent.right)
+                : parent.right
+              anchors.rightMargin: root.verticalEdge && root.editing ? Style.space(8) : 0
               anchors.top: parent.top
-              anchors.horizontalCenter: parent.horizontalCenter
-              spacing: Style.space(8)
-              Repeater {
-                model: root.sidePanelPages
-                delegate: Rectangle {
-                  required property int index
-                  width: root.currentPage === index ? Math.round(Style.space(10)) : Math.round(Style.space(7))
-                  height: width
-                  radius: width / 2
-                  color: root.currentPage === index ? Color.accent : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.35)
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.selectPage(index)
-                    onWheel: function(wheel) {
-                      root.handlePageWheel(wheel.angleDelta.x, wheel.angleDelta.y)
-                      wheel.accepted = true
-                    }
+              anchors.bottom: root.verticalEdge
+                ? parent.bottom
+                : (root.editing ? pageAdd.top : parent.bottom)
+              anchors.bottomMargin: !root.verticalEdge && root.editing ? Style.space(8) : 0
+              orientation: root.verticalEdge ? ListView.Horizontal : ListView.Vertical
+              clip: true
+              spacing: Style.space(6)
+              model: root.sidePanelPages
+              currentIndex: root.currentPage
+
+              delegate: Rectangle {
+                required property int index
+                required property var modelData
+                readonly property bool current: index === root.currentPage
+                width: root.verticalEdge
+                  ? Math.min(tabLabel.implicitWidth + Style.space(18), Style.space(150))
+                  : pageTabs.width
+                height: root.verticalEdge
+                  ? pageTabs.height
+                  : Math.round(Style.space(24))
+                radius: Style.cornerRadius
+                color: current
+                  ? Style.selectedFillFor(root.chromeForeground, Color.accent)
+                  : (tabMouse.containsMouse
+                    ? Style.hoverFillFor(root.chromeForeground, Color.accent)
+                    : Qt.rgba(root.chromeForeground.r, root.chromeForeground.g, root.chromeForeground.b, 0.06))
+                border.width: current ? 1 : 0
+                border.color: Color.accent
+
+                Text {
+                  id: tabLabel
+                  anchors.centerIn: parent
+                  width: Math.min(implicitWidth, Style.space(132))
+                  text: String(modelData.title || "")
+                  textFormat: Text.PlainText
+                  color: root.chromeForeground
+                  elide: Text.ElideRight
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: current
+                }
+
+                MouseArea {
+                  id: tabMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.selectPage(index)
+                  onWheel: function(wheel) {
+                    root.handlePageWheel(wheel.angleDelta.x, wheel.angleDelta.y)
+                    wheel.accepted = true
                   }
                 }
               }
